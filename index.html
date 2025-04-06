@@ -3,11 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Endless Platformer</title>
+    <title>ZipZip</title>
+    <!-- R64 Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&family=VT323&display=swap&family=Petit+Formal+Script&family=Petitet+Formal+Script" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:,">
+    <!-- <script src="https://download.playfab.com/PlayFabClientApi.js"></script> -->
+    <script type="module" src="game.js" defer></script>
 </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
-    <script src="script.js"></script>
+    <div id="loginScreen" class="centered-container">
+        <h1>ZipZip</h1>
+        <div id="authForm">
+            <div class="input-group">
+                <label for="emailInput">Email:</label>
+                <input type="email" id="emailInput" placeholder="your@email.com" required>
+            </div>
+            <div class="input-group">
+                <label for="passwordInput">Password:</label>
+                <input type="password" id="passwordInput" placeholder="Password (min 6 chars)" required>
+            </div>
+            <!-- Add Remember Password Checkbox -->
+            <div class="input-group remember-me" style="display: block;"> <!-- Initially shown for login mode -->
+                 <label style="display: inline-block; margin-right: 10px;">
+                     <input type="checkbox" id="rememberPasswordCheckbox">
+                     Remember Password (Insecure)
+                 </label>
+            </div>
+            <div class="input-group register-only" style="display: none;"> <!-- Initially hidden for login mode -->
+                <label for="aliasInput">Display Name:</label>
+                <input type="text" id="aliasInput" placeholder="Your Alias" maxlength="15">
+            </div>
+
+            <div class="button-group">
+                <button id="authButton">Login</button> <!-- Changes text based on mode -->
+                <button id="quitButton">Quit</button>
+            </div>
+
+            <div id="infoText">Enter email & password to Login or Register.</div>
+
+            <div class="toggle-auth">
+                <a href="#" id="toggleAuthLink">Need to Register?</a> <!-- Changes text based on mode -->
+            </div>
+            <!-- Add a section for password reset -->
+             <div class="toggle-auth">
+                <a href="#" id="resetPasswordLink" style="display: none;">Forgot Password?</a>
+            </div>
+
+            <!-- NEW Options Button -->
+            <button id="optionsButton" class="auth-button">Options</button>
+
+        </div>
+    </div>
+
+    <!-- Game Canvas (initially hidden) -->
+    <canvas id="gameCanvas" style="display: none;"></canvas>
+
+    <!-- Pause Menu (Initially Hidden) -->
+    <div id="pauseMenu" class="centered-container" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 20;">
+        <h1>PAUSED</h1>
+        <div class="button-group" style="flex-direction: column; gap: 15px;"> <!-- Adjust layout if needed -->
+            <button id="resumeButton" class="game-button pause-button">Resume</button>
+            <button id="pauseOptionsButton" class="game-button pause-button">Options</button> <!-- NEW Options Button -->
+            <button id="quitToMenuButton" class="game-button pause-button">Quit to Menu</button>
+        </div>
+    </div>
+
+    <!-- NEW Options Menu (Initially Hidden) -->
+    <div id="optionsMenu" class="menu" style="display: none;">
+        <h2>Options</h2>
+        <div class="options-item">
+            <label for="musicVolumeSlider">Music Volume:</label>
+            <input type="range" id="musicVolumeSlider" min="0" max="100" value="60"> 
+            <span id="musicVolumeValue">60%</span> 
+        </div>
+         <div class="options-item">
+            <label for="sfxVolumeSlider">SFX Volume:</label>
+            <input type="range" id="sfxVolumeSlider" min="0" max="100" value="60">
+            <span id="sfxVolumeValue">60%</span>
+        </div>
+        <button id="optionsBackButton" class="menu-button game-button">Back</button>
+    </div>
+
+    <!-- Game Over Buttons (Initially Hidden) -->
+    <div id="gameOverControls" style="display: none; position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; gap: 20px;">
+        <button id="retryButton" class="game-button">Retry</button>
+        <button id="mainMenuButton" class="game-button">Main Menu</button>
+    </div>
+
+    <!-- Load main script as a module -->
+    <script type="module" src="game.js"></script>
+    <!-- Note: The Firebase SDKs are now imported within firebaseConfig.js -->
 </body>
 </html> 

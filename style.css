@@ -1,20 +1,452 @@
 @font-face {
     font-family: 'Petitinho';
-    src: url('fonts/Petitinho.ttf') format('truetype');
+    src: url('Fonts/Petitinho.ttf') format('truetype');
 }
 
-html, body {
+/* Basic Reset */
+* {
     margin: 0;
     padding: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden; /* Prevent scrollbars */
-    background-color: #000000; /* Black background */
+    box-sizing: border-box;
+}
+
+body {
+    background-color: #1a1a1a; /* Dark background */
+    color: #e0e0e0; /* Light text */
+    font-family: 'Petitinho', sans-serif; /* USE PETITINHO */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden; /* Prevent scrollbars initially */
 }
 
 canvas {
-    /* border: 1px solid #9babb2; */ /* Remove border for seamless look */
-    display: block;
-    width: 100%; /* Make canvas fill body width */
-    height: 100%; /* Make canvas fill body height */
+    border: 1px solid #444; /* Subtle border */
+    background-color: #000; /* Black canvas background */
+    display: block; /* Default for canvas, ensures no extra space */
+}
+
+/* Login Screen Styles - Mimic Old Look */
+#loginScreen {
+    display: flex; 
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: #2e222f; /* Dark Purple from Old Style */
+    padding: 40px; /* Old padding */
+    border-radius: 10px; /* Old border radius */
+    max-width: 650px; /* Increased max width */
+    width: 90%;
+    /* Add side borders */
+    border-left: 15px solid #4d9be6; /* Blue border */
+    border-right: 15px solid #4d9be6; /* Blue border */
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    z-index: 10; /* Ensure login is behind pause */
+}
+
+#loginScreen h1 {
+    font-size: 2.5em; /* Old size */
+    color: #ffffff; /* White */
+    margin-bottom: 30px;
+    letter-spacing: 3px;
+    text-align: center;
+    text-shadow: none; /* Remove previous shadow */
+    /* font-family: Petitinho inherited */
+}
+
+#authForm {
+    display: flex;
+    flex-direction: column;
+    gap: 15px; 
+    width: 100%; 
+}
+
+.input-group {
+    display: flex;
+    flex-direction: row; /* Align label and input side-by-side */
+    align-items: center; /* Vertically center label and input */
+    width: 100%;
+    gap: 10px; /* Space between label and input */
+}
+
+.input-group label {
+    font-size: 1.1em; /* Adjust size as needed */
+    color: #ffffff; /* White label */
+    width: 120px; /* Increased fixed width for labels */
+    text-align: right;
+    flex-shrink: 0; /* Prevent label from shrinking */
+    /* font-family: Petitinho inherited */
+}
+
+#loginScreen input[type="text"],
+#loginScreen input[type="email"],
+#loginScreen input[type="password"] {
+    flex-grow: 1; /* Allow input to take remaining space */
+    padding: 15px; /* Old padding */
+    border: none;
+    border-radius: 8px;
+    background-color: #3e3546; /* Darker input background */
+    color: #c7dcd0; /* Light text color */
+    font-size: 1.2em; /* Old font size */
+    /* font-family: Petitinho inherited */
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.2); /* Old shadow */
+}
+
+#loginScreen input::placeholder {
+    color: #7f708a; /* Old placeholder color */
+    opacity: 0.8;
+}
+
+/* Specific alignment for Display Name field (register only) */
+.input-group.register-only {
+    /* Keeps row layout from .input-group */
+}
+
+/* Remember me checkbox alignment */
+.remember-me {
+    justify-content: center; /* Center checkbox group */
+    gap: 5px !important; /* Reduce gap */
+}
+
+.remember-me label {
+    width: auto !important; /* Override fixed label width */
+    text-align: left !important;
+    font-size: 1em !important; /* Smaller font */
+    color: #ccc !important; /* Lighter color */
+}
+
+.remember-me input[type="checkbox"] {
+    margin-right: 5px;
+    width: auto;
+    vertical-align: middle;
+    flex-grow: 0 !important; /* Don't let checkbox grow */
+}
+
+.button-group {
+    display: flex;
+    justify-content: center; /* Center buttons */
+    gap: 20px; /* Old gap */
+    width: 100%;
+    margin-top: 20px; /* Increased top margin */
+}
+
+#loginScreen button {
+    padding: 12px 30px; /* Old padding */
+    border: none;
+    border-radius: 5px; /* Old radius */
+    background-color: #c7dcd0; /* Light button background */
+    color: #3e3546; /* Dark text color */
+    font-size: 1.1em; /* Old font size */
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2); /* Old shadow */
+    text-shadow: none; /* Remove previous shadow */
+    min-width: auto; /* Remove min-width */
+}
+
+#loginScreen button:hover:not(:disabled) {
+    background-color: #ffffff; /* White hover */
+    transform: scale(1.02); /* Slight grow */
+}
+
+#loginScreen button:active:not(:disabled) {
+    transform: scale(0.98); /* Slight shrink */
+}
+
+#loginScreen button:disabled {
+    background-color: #555;
+    cursor: not-allowed;
+    color: #999;
+    transform: none;
+    box-shadow: none;
+}
+
+#infoText {
+    margin-top: 20px; /* Old margin */
+    font-size: 1em; /* Old font size */
+    color: #f9c22b; /* Yellow info color */
+    text-align: center; 
+    /* font-family: Petitinho inherited */
+}
+
+.toggle-auth {
+    margin-top: 15px; /* More space */
+    text-align: center;
+}
+
+.toggle-auth a {
+    color: #8fd3ff; /* Lighter blue */
+    text-decoration: underline;
+    font-size: 1em;
+    cursor: pointer;
+    /* font-family: Petitinho inherited */
+}
+
+.toggle-auth a:hover {
+    color: #c7dcd0;
+}
+
+/* Helper to hide canvas initially if login is shown */
+body:has(#loginScreen[style*="display: flex"]) #gameCanvas {
+    display: none !important;
+}
+
+/* Helper to center body content when login is shown */
+body:has(#loginScreen[style*="display: flex"]) {
+    align-items: center;
+    justify-content: center;
+}
+
+/* Login Screen - Ensure elements inherit Petitinho */
+#loginScreen label,
+#loginScreen input,
+#loginScreen button,
+#infoText,
+.toggle-auth a,
+.remember-me label {
+    font-family: 'Petitinho', sans-serif; /* Explicitly set font */
+}
+
+/* Styles for Game Over Buttons */
+#gameOverControls {
+    /* Positioned via inline style in HTML */
+}
+
+.game-button {
+    padding: 12px 30px;
+    font-family: 'Petitinho', sans-serif;
+    font-size: 1.2em;
+    cursor: pointer;
+    border: none;
+    border-radius: 5px;
+    background-color: #c7dcd0; /* Match login button style */
+    color: #3e3546;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.game-button:hover {
+    background-color: #ffffff;
+    transform: scale(1.02);
+}
+
+.game-button:active {
+    transform: scale(0.98);
+}
+
+/* Style for controller-focused button */
+.game-button.focused-button {
+    outline: 3px solid #f9c22b; /* Yellow outline */
+    box-shadow: 0 0 10px #f9c22b; /* Yellow glow */
+    transform: scale(1.05); /* Slightly larger */
+}
+
+/* Pause Menu Styles */
+#pauseMenu {
+    /* Uses .centered-container for base */
+    display: flex; /* Ensure flex is explicitly set */
+    flex-direction: column; /* Stack title and buttons vertically */
+    align-items: center; /* Center items horizontally */
+    background-color: rgba(46, 34, 47, 0.9); /* Dark Purple, slightly more opaque */
+    padding: 30px 50px;
+    border: 2px solid #c7dcd0; /* Use light button color for border */
+    border-radius: 10px;
+    min-width: 300px;
+}
+
+#pauseMenu h1 {
+    font-size: 2.5em;
+    color: #ffffff;
+    margin-bottom: 30px;
+    text-align: center;
+    width: 100%; /* Ensure H1 takes full width for centering */
+}
+
+#pauseMenu .button-group {
+    /* Uses existing .button-group styles (centered, gap) */
+}
+
+#pauseMenu .game-button {
+    /* Uses existing .game-button styles */
+}
+
+/* Styles for Game Over Buttons */
+#gameOverControls {
+    /* Positioned via inline style in HTML */
+}
+
+.game-button {
+    padding: 12px 30px;
+    font-family: 'Petitinho', sans-serif;
+    font-size: 1.2em;
+    cursor: pointer;
+    border: none;
+    border-radius: 5px;
+    background-color: #c7dcd0; /* Match login button style */
+    color: #3e3546;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.game-button:hover {
+    background-color: #ffffff;
+    transform: scale(1.02);
+}
+
+.game-button:active {
+    transform: scale(0.98);
+}
+
+/* REMOVED OLD LOGIN SCREEN STYLES THAT WERE HERE */ 
+
+.pause-button.focused,
+.game-over-button.focused { /* Apply focus style to both */
+    outline: 3px solid yellow; /* Example focus style */
+    box-shadow: 0 0 10px yellow;
+}
+
+/* Options Menu Styles */
+#optionsMenu {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(46, 34, 47, 0.95); /* Match pause menu background */
+    padding: 30px 40px; /* Match pause menu padding */
+    border-radius: 10px; /* Match pause menu radius */
+    border: 2px solid #c7dcd0; /* Match pause menu border */
+    color: white;
+    text-align: center;
+    width: 90%; /* Increase width slightly */
+    max-width: 500px; 
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
+    z-index: 30; 
+}
+
+#optionsMenu h2 {
+    margin-bottom: 30px; /* More space */
+    font-family: 'Petitinho', sans-serif; /* CORRECT FONT */
+    font-size: 2.8em; /* Match pause menu h1 */
+    color: #ffffff; /* Match pause menu h1 color */
+    text-shadow: 2px 2px 3px rgba(0,0,0,0.5); /* Add slight shadow */
+}
+
+.options-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between; 
+    margin-bottom: 20px; /* More spacing */
+    padding: 8px; /* More padding */
+    border-radius: 5px; /* Match button radius */
+    transition: background-color 0.2s;
+}
+
+/* Style for focused option item */
+.options-item.focused {
+    background-color: rgba(249, 194, 43, 0.3); /* Use game button focus color, but lighter */
+    outline: 2px solid rgba(249, 194, 43, 0.5); /* Subtle outline */
+}
+
+.options-item label {
+    margin-right: 15px; /* More space */
+    flex-basis: 150px; /* More width */
+    text-align: right;
+    font-family: 'Petitinho', sans-serif; /* CORRECT FONT */
+    font-size: 1.4em; /* Larger font */
+    color: #e0e0e0; /* Match body text */
+}
+
+.options-item input[type="range"] {
+    flex-grow: 1; 
+    margin-right: 15px; /* More space */
+    cursor: pointer;
+    /* Add styles to make slider thumb more visible if needed */
+}
+
+.options-item span {
+    min-width: 60px; /* More width for XXX% */
+    text-align: left;
+    font-family: 'Petitinho', sans-serif; /* CORRECT FONT */
+    font-size: 1.4em; /* Match label */
+    color: #e0e0e0; /* Match body text */
+}
+
+#optionsBackButton {
+    margin-top: 30px; /* More space */
+    /* Inherits .game-button styles which have correct font */
+}
+
+/* Make sure focused button style uses Petitinho */
+.game-button.focused-button {
+    outline: 3px solid #f9c22b;
+    box-shadow: 0 0 10px #f9c22b;
+    transform: scale(1.05);
+    font-family: 'Petitinho', sans-serif; /* Explicitly set */
+}
+
+/* Adjust slider appearance (example, might need browser prefixes) */
+input[type=range] {
+  height: 20px;
+  -webkit-appearance: none; /* Override default look */
+  margin: 10px 0;
+  width: 100%;
+  background: transparent; /* Remove default background */
+}
+input[type=range]:focus {
+  outline: none; /* Remove focus outline */
+}
+/* Thumb */
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 18px;
+  width: 18px;
+  border-radius: 50%;
+  background: #c7dcd0; /* Match button color */
+  cursor: pointer;
+  margin-top: -7px; /* Center thumb vertically */
+  box-shadow: 1px 1px 3px rgba(0,0,0,0.4);
+}
+input[type=range]::-moz-range-thumb {
+  height: 18px;
+  width: 18px;
+  border-radius: 50%;
+  background: #c7dcd0;
+  cursor: pointer;
+  box-shadow: 1px 1px 3px rgba(0,0,0,0.4);
+  border: none;
+}
+/* Track */
+input[type=range]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 5px;
+  cursor: pointer;
+  background: #555;
+  border-radius: 3px;
+  border: 1px solid #333;
+}
+input[type=range]::-moz-range-track {
+  width: 100%;
+  height: 5px;
+  cursor: pointer;
+  background: #555;
+  border-radius: 3px;
+  border: 1px solid #333;
+}
+
+/* Ensure menu buttons have consistent styling */
+.menu-button {
+    /* Remove visual styles that conflict with .game-button */
+    cursor: pointer;
+    /* background-color: #4CAF50; */ /* REMOVED */
+    /* color: white; */ /* REMOVED */
+    /* border: none; */ /* REMOVED */
+    /* padding: 10px 15px; */ /* REMOVED */
+    /* border-radius: 5px; */ /* REMOVED */
+    /* font-size: 1em; */ /* REMOVED */
+    /* transition: background-color 0.2s; */ /* REMOVED */
+}
+
+.menu-button:hover {
+    /* background-color: #45a049; */ /* REMOVED */
 } 
