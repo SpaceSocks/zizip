@@ -10,7 +10,7 @@ import {
     SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED,
     PLATFORM_PROBABILITY, PLATFORM_MIDDLE_THRESHOLD,
     PLATFORM_FLASH_DURATION, PLATFORM_FLASH_INTERVAL_MAX, PLATFORM_FLASH_INTERVAL_MIN,
-    PLATFORM_FLASH_START_DELAY
+    PLATFORM_FLASH_START_DELAY, PLAYER_AIR_CONTROL_FACTOR
 } from './constants.js';
 
 // DEBUG: Verify state import
@@ -37,6 +37,8 @@ function update(dt) {
 
     // --- 1. Update ALL Platform Positions ---
     platforms.forEach((platform) => {
+        platform.previousY = platform.y; // <<< STORE PREVIOUS Y
+
         let platformDeltaX = 0;
         let platformDeltaY = 0;
         if (platform.movement) {
@@ -86,29 +88,7 @@ function update(dt) {
         platform.deltaYThisFrame = platformDeltaY;
     });
 
-    // --- 2. Player Horizontal Movement ---
-    let targetVelocityX = 0;
-    if (!player.isDashing) {
-        if (input.keys.left) { targetVelocityX = -player.speed; }
-        else if (input.keys.right) { targetVelocityX = player.speed; }
-        
-        // Apply friction/acceleration
-        if (player.velocityX < targetVelocityX) {
-            player.velocityX = Math.min(player.velocityX + player.currentFriction * player.speed, targetVelocityX); 
-        } else if (player.velocityX > targetVelocityX) {
-            player.velocityX = Math.max(player.velocityX - player.currentFriction * player.speed, targetVelocityX); 
-        }
-    }
-    // Apply player's own horizontal velocity
-    player.x += player.velocityX * dt * 60;
-    // Apply horizontal carrying from the platform the player *was* on
-    if (player.groundedOnPlatform) { 
-        const deltaXToAdd = player.groundedOnPlatform.deltaXThisFrame || 0;
-        player.x += deltaXToAdd;
-        if (deltaXToAdd !== 0) console.log(`Applying prev platform X delta ${deltaXToAdd.toFixed(2)} from platform ${player.groundedOnPlatform.id}`);
-    }
-
-    // --- 3. Player Vertical Movement & Collision ---
+    // --- 2. Player Vertical Movement & Collision ---
     const wasGrounded = player.isGrounded;
     let landedOnMiddle = false;
     player.isGrounded = false; // Assume not grounded this frame
@@ -168,63 +148,84 @@ function update(dt) {
             }
         }
         
-        // Check for landing collision
-        const playerBottom = player.y + player.height;
-        const prevPlayerBottom = previousY + player.height; // Keep for potential future use, but not primary check now
-        
-        // Refined collision check
-        if (!platform.isDisappearing &&
-            player.x < platform.x + platform.width &&    // Horizontal overlap
-            player.x + player.width > platform.x &&
-            playerBottom >= platform.y &&               // Player bottom is at or below platform top
-            playerBottom <= platform.y + platform.height && // Player bottom is not below platform bottom 
-            player.velocityY >= 0) {                   // Player is moving down or still
-            
-            // LANDING OCCURRED
-            console.log(`Landing detected on platform ${platform.id}`);
-            player.y = platform.y - player.height;
-            player.velocityY = 0;
-            player.isGrounded = true;
-            player.jumpsLeft = 2;
-            player.currentFriction = platform.friction;
-            currentLandingPlatform = platform; // Store the platform landed on THIS frame
-
-            // Scoring, Spawning, etc. (only on first landing)
-            if (!platform.landedOn) {
-                platform.landedOn = true;
-                state.setLastLandedPlatformId(platform.id);
-                if (!platform.isStartingPlatform) {
-                    // SET TIMER FOR FLASH START
-                    platform.disappearStartTime = Date.now() + PLATFORM_FLASH_START_DELAY; 
-                    // Calculate score
-                    const playerCenterX = player.x + player.width / 2;
-                    let scoreAwarded = 10;
-                    if (playerCenterX >= platform.middleSection.x && playerCenterX <= platform.middleSection.x + platform.middleSection.width) {
-                        scoreAwarded = (platform.type === 'moving') ? 25 : 20;
-                        landedOnMiddle = true;
-                    }
-                    state.setScore(state.getScore() + scoreAwarded);
-                    state.addScorePopup({
-                        x: player.x + player.width / 2, // Start at player center
-                        y: player.y - 5, // Start slightly above player
-                        text: `+${scoreAwarded}`,
-                        creationTime: now,
-                        alpha: 0 // Start invisible, fade in
-                    });
-                }
-                // Spawn next platform check
-                let isHighest = true;
-                for(let p of platforms) {
-                    if (!p.landedOn && p.y < platform.y) {
-                        isHighest = false;
-                        break;
-                    }
-                }
-                if(isHighest) {
-                    spawnNewPlatform(platform);
-                }
+        // --- Grounding Maintenance Check (NEW) ---
+        // If player was grounded on THIS platform last frame, check if they are still basically on it
+        if (player.groundedOnPlatform === platform) { // Check using reference from previous frame
+            const verticalTolerance = 2; // Allow small vertical gap
+            // Check horizontal overlap AND vertical proximity
+            if (player.x < platform.x + platform.width &&
+                player.x + player.width > platform.x &&
+                Math.abs((player.y + player.height) - platform.y) <= verticalTolerance) 
+            {
+                // Maintain grounded state on this platform
+                // console.log(`Maintaining ground on platform ${platform.id}`); // DEBUG
+                player.isGrounded = true; // Force grounded state
+                player.y = platform.y - player.height; // Re-snap position
+                player.velocityY = 0; // Reset velocity
+                currentLandingPlatform = platform; // Mark this as the platform for this frame
+                // Don't reset jumps here, only on initial landing
             }
-        } // End Collision
+        }
+
+        // --- Initial Landing Collision Check ---
+        // Only run this if the grounding maintenance didn't already confirm grounding
+        if (!player.isGrounded || currentLandingPlatform !== platform) { 
+            const playerBottom = player.y + player.height;
+            const prevPlayerBottom = previousY + player.height; 
+            
+            if (!platform.isDisappearing &&
+                player.x < platform.x + platform.width &&    
+                player.x + player.width > platform.x &&
+                playerBottom >= platform.y &&               
+                prevPlayerBottom <= (platform.previousY ?? platform.y) && 
+                player.velocityY >= 0) {                   
+                
+                // INITIAL LANDING OCCURRED
+                console.log(`Initial landing detected on platform ${platform.id}`);
+                player.y = platform.y - player.height;
+                player.velocityY = 0;
+                player.isGrounded = true;
+                player.jumpsLeft = 2; // Reset jumps ONLY on initial landing
+                player.currentFriction = platform.friction;
+                currentLandingPlatform = platform; // Store the platform landed on THIS frame
+
+                // Scoring, Spawning, etc. (only on first landing)
+                if (!platform.landedOn) {
+                    platform.landedOn = true;
+                    state.setLastLandedPlatformId(platform.id);
+                    if (!platform.isStartingPlatform) {
+                        // SET TIMER FOR FLASH START
+                        platform.disappearStartTime = Date.now() + PLATFORM_FLASH_START_DELAY; 
+                        // Calculate score
+                        const playerCenterX = player.x + player.width / 2;
+                        let scoreAwarded = 10;
+                        if (playerCenterX >= platform.middleSection.x && playerCenterX <= platform.middleSection.x + platform.middleSection.width) {
+                            scoreAwarded = (platform.type === 'moving') ? 25 : 20;
+                            landedOnMiddle = true;
+                        }
+                        state.setScore(state.getScore() + scoreAwarded);
+                        state.addScorePopup({
+                            x: player.x + player.width / 2, // Start at player center
+                            y: player.y - 5, // Start slightly above player
+                            text: `+${scoreAwarded}`,
+                            creationTime: now,
+                            alpha: 0 // Start invisible, fade in
+                        });
+                    }
+                    // Spawn next platform check
+                    let isHighest = true;
+                    for(let p of platforms) {
+                        if (!p.landedOn && p.y < platform.y) {
+                            isHighest = false;
+                            break;
+                        }
+                    }
+                    if(isHighest) {
+                        spawnNewPlatform(platform);
+                    }
+                }
+            } // End Initial Landing Check
+        } // End check if already grounded on this plat
     }); // End platforms.forEach
     
     // Update player's grounded platform reference for NEXT frame
@@ -235,7 +236,43 @@ function update(dt) {
         audio.playLandingSound(landedOnMiddle);
     }
 
-    // --- 4. Post-Movement Updates & Checks ---
+    // --- 4. Player Horizontal Movement (AFTER collision/ground check) --- 
+    let targetVelocityX = 0;
+    
+    // Set correct friction based on CURRENT grounded state
+    if (player.isGrounded) {
+        // If grounded, friction was set during collision by the platform.
+        // We rely on `player.currentFriction` having been set correctly in the collision loop.
+    } else {
+        // Use air control factor if not grounded
+        player.currentFriction = PLAYER_AIR_CONTROL_FACTOR; 
+        // console.log("Using air control factor"); // DEBUG
+    }
+    
+    if (!player.isDashing) {
+        // Input velocity
+        if (input.keys.left) { targetVelocityX = -player.speed; }
+        else if (input.keys.right) { targetVelocityX = player.speed; }
+        
+        // Apply friction/acceleration using the correct currentFriction
+        // console.log(`Applying friction: ${player.currentFriction}`); // DEBUG
+        if (player.velocityX < targetVelocityX) {
+            player.velocityX = Math.min(player.velocityX + player.currentFriction * player.speed, targetVelocityX); 
+        } else if (player.velocityX > targetVelocityX) {
+            player.velocityX = Math.max(player.velocityX - player.currentFriction * player.speed, targetVelocityX); 
+        }
+    }
+    
+    // Apply player's own horizontal velocity
+    player.x += player.velocityX * dt * 60;
+    
+    // Apply horizontal carrying from the platform the player *was* on
+    if (player.groundedOnPlatform) { // Check ref from prev frame for carrying
+        const deltaXToAdd = player.groundedOnPlatform.deltaXThisFrame || 0;
+        player.x += deltaXToAdd;
+    }
+
+    // --- 5. Post-Movement Updates & Checks --- 
     // Update Score Popups
     state.filterScorePopups(popup => {
         const age = now - popup.creationTime;

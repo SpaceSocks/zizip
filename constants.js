@@ -34,7 +34,8 @@ export const R64 = {
 // --- Physics & Gameplay ---
 export const PLAYER_SPEED = 5;
 export const PLAYER_JUMP_POWER = 24;
-export const PLAYER_GRAVITY = 1.5;
+export const PLAYER_GRAVITY = 1.1;
+export const PLAYER_AIR_CONTROL_FACTOR = 0.08;
 export const PLAYER_DASH_POWER = 15;
 export const PLAYER_DASH_DURATION = 150;
 export const PLAYER_DASH_COOLDOWN = 500;
