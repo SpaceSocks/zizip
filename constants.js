@@ -22,26 +22,27 @@ export const R64 = {
     YELLOW_ORANGE: '#f79617',
     YELLOW: '#f9c22b',
     PLAYER_BLUE: '#4d9be6',
-    ICE_BLUE: '#8fd3ff', // Base Ice Platform
-    LIGHT_ICE_BLUE: '#8ff8e2', // Middle Ice Platform
+    ICE_BLUE: '#a0d2eb', // Base Ice Platform
+    LIGHT_ICE_BLUE: '#d0efff', // Middle Ice Platform
     BASE_PLATFORM_RED: '#e83b3b', // Base Normal Platform
     MIDDLE_PLATFORM_RED: '#f68181', // Middle Normal Platform
-    BRIGHT_GREEN: '#1ebc73', // Added for Player
+    BRIGHT_GREEN: '#34eb4f', // Added for Player
+    MOVING_PLATFORM_ORANGE: '#f79617', // NEW
+    MOVING_PLATFORM_MIDDLE_ORANGE: '#fbb954', // NEW
 };
 
 // --- Physics & Gameplay ---
 export const PLAYER_SPEED = 5;
-export const PLAYER_JUMP_POWER = 16;
-export const PLAYER_GRAVITY = 1.1;
+export const PLAYER_JUMP_POWER = 24;
+export const PLAYER_GRAVITY = 1.5;
 export const PLAYER_DASH_POWER = 15;
 export const PLAYER_DASH_DURATION = 150;
 export const PLAYER_DASH_COOLDOWN = 500;
 
 export const PLATFORM_BASE_WIDTH = 100;
-export const PLATFORM_HEIGHT = 15;
-export const PLATFORM_MIDDLE_THRESHOLD = 0.2;
-export const PLATFORM_DISAPPEAR_TIME = 3000;
-export const PLATFORM_FADE_DURATION = 500;
+export const PLATFORM_HEIGHT = 20;
+export const PLATFORM_MIDDLE_THRESHOLD = 0.3;
+export const MOVING_PLATFORM_SPEED = 80;
 
 export const MAX_LIVES = 3;
 
@@ -60,4 +61,18 @@ export const SCORE_POPUP_FADE_DURATION = 200; // Fade in/out time
 export const SCORE_POPUP_SPEED = 1.5; // Pixels per frame upward movement
 
 // --- Input ---
-export const AXIS_DEADZONE = 0.2; 
+export const AXIS_DEADZONE = 0.2;
+
+// Platform Type Probabilities (Ensure they add up correctly)
+export const PLATFORM_PROBABILITY = {
+    NORMAL: 0.75, // Reduced normal chance
+    ICE: 0.10,
+    MOVING: 0.15 // Added moving chance
+    // Total should ideally be close to 1.0
+};
+
+// NEW Platform Warning/Removal Timings
+export const PLATFORM_FLASH_START_DELAY = 3000; // ms after landing before flashing starts
+export const PLATFORM_FLASH_DURATION = 2000; // ms duration of flashing before removal
+export const PLATFORM_FLASH_INTERVAL_MAX = 300; // Initial ms between flashes (slow)
+export const PLATFORM_FLASH_INTERVAL_MIN = 50;  // Final ms between flashes (fast) 

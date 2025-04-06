@@ -45,6 +45,8 @@ let currentTrackInfo = "None";
 let height = 0;
 let difficultyFactor = 0;
 let platforms = [];
+let lastLandedPlatformId = null; // NEW: Track the last platform landed on
+let initialPlayerY = 0; // NEW: Track player's starting Y position
 
 // --- Effect State ---
 let scorePopups = [];
@@ -96,6 +98,23 @@ export function getPlatforms() { return platforms; }
 export function setPlatforms(newPlatforms) { platforms = newPlatforms; }
 export function addPlatform(platform) { platforms.push(platform); }
 export function filterPlatforms(predicate) { platforms = platforms.filter(predicate); }
+
+// NEW: Accessor for last landed platform
+export function setLastLandedPlatformId(id) {
+    lastLandedPlatformId = id;
+    console.log(`Last landed platform ID set to: ${id}`);
+}
+export function getLastLandedPlatformId() {
+    return lastLandedPlatformId;
+}
+
+// NEW: Accessor for initial Y
+export function setInitialPlayerY(y) {
+    initialPlayerY = y;
+}
+export function getInitialPlayerY() {
+    return initialPlayerY;
+}
 
 // --- Score Popup Accessors ---
 export function getScorePopups() { return scorePopups; }
@@ -153,6 +172,8 @@ export function resetGameStats() {
     maxHeight = 0;
     resetLives(); // Reset lives when resetting game stats
     lastSubmittedScore = null; // Clear highlight marker
+    lastLandedPlatformId = null; // Reset on new game/full reset
+    initialPlayerY = 0; // Reset initial Y
 }
 
 // --- Leaderboard Management (Firestore Implementation) --- //

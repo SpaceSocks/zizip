@@ -6,236 +6,326 @@ import { player, createPlatform } from './entities.js';
 import * as ui from './ui.js'; // Import UI
 import {
     MIN_VERT_GAP, MAX_VERT_GAP, PLATFORM_BASE_WIDTH,
-    PLATFORM_DISAPPEAR_TIME, PLATFORM_FADE_DURATION,
     PLAYER_GRAVITY, PLAYER_JUMP_POWER, PLAYER_SPEED,
-    SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED
+    SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED,
+    PLATFORM_PROBABILITY, PLATFORM_MIDDLE_THRESHOLD,
+    PLATFORM_FLASH_DURATION, PLATFORM_FLASH_INTERVAL_MAX, PLATFORM_FLASH_INTERVAL_MIN,
+    PLATFORM_FLASH_START_DELAY
 } from './constants.js';
+
+// DEBUG: Verify state import
+console.log("Imported state object:", state);
 
 // --- Game Variables ---
 let animationFrameId = null;
 let lastTimestamp = 0; // Track last timestamp for delta time
 
+// Add trail properties to the player object upon load
+player.trailPositions = []; 
+player.maxTrailLength = 5; // Number of ghost images
+player.trailUpdateCounter = 0;
+player.trailUpdateFrequency = 2; // Update trail every N frames
+
 // --- Main Update Function ---
-function update(dt) { // Accept dt as parameter
-    // Only run gameplay logic updates if in Playing state
-    if (state.getCurrentGameState() === state.GameState.Playing) {
-        // Update Timer
-        state.updateElapsedTime();
+function update(dt) {
+    if (state.getCurrentGameState() !== state.GameState.Playing) return;
+    
+    state.updateElapsedTime();
+    const now = Date.now();
+    const difficulty = state.getDifficultyFactor(); 
+    const platforms = state.getPlatforms();
 
-        // Difficulty Scaling
-        const currentMaxHeight = state.getMaxHeight();
-        const difficulty = Math.min(currentMaxHeight / 5000, 0.5);
-        state.setDifficultyFactor(difficulty);
-
-        // --- Player Horizontal Movement ---
-        let targetVelocityX = 0;
-        if (!player.isDashing) {
-            if (input.keys.left) {
-                targetVelocityX = -player.speed;
-            } else if (input.keys.right) {
-                targetVelocityX = player.speed;
-            }
-            // Apply friction / acceleration (Scale by dt? Maybe not for friction/accel)
-            // Let's keep acceleration frame-based for now, adjust base speed later if needed
-            if (player.velocityX < targetVelocityX) {
-                player.velocityX = Math.min(player.velocityX + player.currentFriction * player.speed, targetVelocityX);
-            } else if (player.velocityX > targetVelocityX) {
-                player.velocityX = Math.max(player.velocityX - player.currentFriction * player.speed, targetVelocityX);
-            }
-            player.x += player.velocityX * dt * 60; // Scale position change by dt (normalize to 60fps)
-        } else {
-            player.x += player.velocityX * dt * 60; // Scale dash movement by dt
-        }
-
-        // --- Player Vertical Movement & State Reset ---
-        const wasGrounded = player.isGrounded;
-        player.isGrounded = false;
-        if (!player.isDashing) {
-            player.velocityY += player.gravity * dt * 60; // Scale gravity by dt
-        }
-        let previousY = player.y;
-        player.y += player.velocityY * dt * 60; // Scale position change by dt
-        player.currentFriction = 0.1;
-
-        // --- Platform Update and Collision ---
-        let highestPlatformY = graphics.canvas.height;
-        const now = Date.now();
-        let platforms = state.getPlatforms(); // Get current platforms
-        let landedOnMiddle = false; // Flag to check for middle landing SFX
-
-        platforms.forEach((platform) => {
-            // Platform Disappearance Timer Logic
-            if (state.getCurrentGameState() === state.GameState.Playing) {
-                // Platform Disappearance Trigger
-                if (platform.disappearStartTime && !platform.isDisappearing) {
-                    if (now >= platform.disappearStartTime) {
-                        platform.isDisappearing = true;
-                        platform.fadeStartTime = now; // <<< SET FADE START TIME HERE
-                        console.log(`Platform ${platform.id} starting to disappear at ${now.toFixed(0)}`);
-                    }
+    // --- 1. Update ALL Platform Positions ---
+    platforms.forEach((platform) => {
+        let platformDeltaX = 0;
+        let platformDeltaY = 0;
+        if (platform.movement) {
+            const move = platform.movement.speed * dt;
+            if (platform.movement.axis === 'x') {
+                platformDeltaX = platform.movement.direction * move;
+                platform.x += platformDeltaX;
+                
+                // Check range relative to originalX first
+                if (platform.x > platform.originalX + platform.movement.range || platform.x < platform.originalX - platform.movement.range) {
+                    platform.movement.direction *= -1;
+                    // Clamp position relative to range
+                    platform.x = Math.max(platform.originalX - platform.movement.range, Math.min(platform.x, platform.originalX + platform.movement.range)); 
+                    platformDeltaX = 0; // No delta if clamped this way for range
                 }
-                // Platform Fading Calculation
-                if (platform.isDisappearing) {
-                    // Use the fadeStartTime for accurate alpha calculation
-                    const timeElapsedSinceFadeStart = now - (platform.fadeStartTime || platform.disappearStartTime); // Fallback just in case
-                    platform.alpha = Math.max(0, 1 - (PLATFORM_FADE_DURATION ? (timeElapsedSinceFadeStart / PLATFORM_FADE_DURATION) : 0)); 
-                    if (platform.alpha <= 0) {
-                        platform.remove = true;
+
+                // >>> NEW: Check screen boundaries AFTER range check <<<
+                if (platform.x <= 0) {
+                    platform.x = 0; // Clamp to left edge
+                    if (platform.movement.direction === -1) { // If moving left...
+                        platform.movement.direction = 1; // Bounce right
+                        console.log(`Platform ${platform.id} hit left edge, bouncing right.`);
                     }
+                    platformDeltaX = 0; // No delta if hit edge
+                } else if (platform.x + platform.width >= graphics.canvas.width) {
+                    platform.x = graphics.canvas.width - platform.width; // Clamp to right edge
+                    if (platform.movement.direction === 1) { // If moving right...
+                        platform.movement.direction = -1; // Bounce left
+                        console.log(`Platform ${platform.id} hit right edge, bouncing left.`);
+                    }
+                    platformDeltaX = 0; // No delta if hit edge
+                }
+                
+                platform.middleSection.x = platform.x + platform.width * (0.5 - PLATFORM_MIDDLE_THRESHOLD / 2);
+            } else { // Axis 'y'
+                platformDeltaY = platform.movement.direction * move;
+                platform.y += platformDeltaY;
+                // Clamp Y
+                if (platform.y > platform.originalY + platform.movement.range || platform.y < platform.originalY - platform.movement.range) {
+                    platform.movement.direction *= -1;
+                    platform.y = Math.max(platform.originalY - platform.movement.range, Math.min(platform.y, platform.originalY + platform.movement.range));
+                    platformDeltaY = 0;
                 }
             }
+        }
+        platform.deltaXThisFrame = platformDeltaX;
+        platform.deltaYThisFrame = platformDeltaY;
+    });
 
-            // Collision check
-            const playerBottom = player.y + player.height;
-            const prevPlayerBottom = previousY + player.height;
+    // --- 2. Player Horizontal Movement ---
+    let targetVelocityX = 0;
+    if (!player.isDashing) {
+        if (input.keys.left) { targetVelocityX = -player.speed; }
+        else if (input.keys.right) { targetVelocityX = player.speed; }
+        
+        // Apply friction/acceleration
+        if (player.velocityX < targetVelocityX) {
+            player.velocityX = Math.min(player.velocityX + player.currentFriction * player.speed, targetVelocityX); 
+        } else if (player.velocityX > targetVelocityX) {
+            player.velocityX = Math.max(player.velocityX - player.currentFriction * player.speed, targetVelocityX); 
+        }
+    }
+    // Apply player's own horizontal velocity
+    player.x += player.velocityX * dt * 60;
+    // Apply horizontal carrying from the platform the player *was* on
+    if (player.groundedOnPlatform) { 
+        const deltaXToAdd = player.groundedOnPlatform.deltaXThisFrame || 0;
+        player.x += deltaXToAdd;
+        if (deltaXToAdd !== 0) console.log(`Applying prev platform X delta ${deltaXToAdd.toFixed(2)} from platform ${player.groundedOnPlatform.id}`);
+    }
 
-            if (!platform.isDisappearing &&
-                player.x < platform.x + platform.width &&
-                player.x + player.width > platform.x &&
-                playerBottom >= platform.y &&
-                prevPlayerBottom <= platform.y &&
-                player.velocityY >= 0) {
+    // --- 3. Player Vertical Movement & Collision ---
+    const wasGrounded = player.isGrounded;
+    let landedOnMiddle = false;
+    player.isGrounded = false; // Assume not grounded this frame
+    let currentLandingPlatform = null; // Platform landed on *this* frame
+    
+    // Apply vertical movement from the platform the player *was* on
+    if (player.groundedOnPlatform) {
+        const deltaYToApply = player.groundedOnPlatform.deltaYThisFrame || 0;
+        player.y += deltaYToApply;
+        if (deltaYToApply !== 0) console.log(`Applying prev platform Y delta ${deltaYToApply.toFixed(2)} to player Y from platform ${player.groundedOnPlatform.id}`);
+    }
+    
+    // Apply gravity (only if not dashing)
+    if (!player.isDashing) {
+        player.velocityY += player.gravity * dt * 60;
+    }
+    let previousY = player.y; // Store Y before applying velocity
+    player.y += player.velocityY * dt * 60; // Apply player's vertical velocity
 
-                player.y = platform.y - player.height;
-                player.velocityY = 0;
-                player.isGrounded = true;
-                player.jumpsLeft = 2;
-                player.currentFriction = platform.friction;
+    // Collision Check Loop
+    platforms.forEach((platform) => {
+        // Update platform flashing state (can happen regardless of collision)
+        if (platform.landedOn && !platform.isStartingPlatform) {
+            // --- Start Flashing Check ---
+            if (platform.disappearStartTime && !platform.isFlashing) { 
+                if (now >= platform.disappearStartTime) {
+                    console.log(`Platform ${platform.id} starting to flash.`);
+                    platform.isFlashing = true;
+                    platform.flashStartTime = now;
+                    platform.lastFlashToggleTime = now;
+                    platform.flashVisible = true; // Start visible
+                }
+            }
 
-                // Score, Disappear Timer, Spawn Next, Create Score Popup
-                if (!platform.landedOn) {
-                    platform.landedOn = true; // Mark as landed on immediately
+            // --- Flashing Update ---
+            if (platform.isFlashing) {
+                const elapsedFlashTime = now - platform.flashStartTime;
+
+                // Check if flashing duration is over
+                if (elapsedFlashTime >= PLATFORM_FLASH_DURATION) {
+                    console.log(`Platform ${platform.id} flashing complete, marking for removal.`);
+                    platform.remove = true; // Mark for removal
+                    platform.isFlashing = false; // Stop flashing state
+                } else {
+                    // Calculate current flash interval (linear interpolation)
+                    const flashProgress = elapsedFlashTime / PLATFORM_FLASH_DURATION;
+                    platform.flashInterval = PLATFORM_FLASH_INTERVAL_MAX - 
+                                              (PLATFORM_FLASH_INTERVAL_MAX - PLATFORM_FLASH_INTERVAL_MIN) * flashProgress;
                     
-                    // --- Only perform scoring/disappearing/popup on NON-starting platforms ---
-                    if (!platform.isStartingPlatform) {
-                        // Set disappear timer
-                        const disappearDelay = PLATFORM_DISAPPEAR_TIME * (1 - difficulty * 0.5);
-                        platform.disappearStartTime = now + disappearDelay;
-
-                        // Calculate score
-                        const playerCenterX = player.x + player.width / 2;
-                        let scoreAwarded = 10;
-                        if (playerCenterX >= platform.middleSection.x &&
-                            playerCenterX <= platform.middleSection.x + platform.middleSection.width) {
-                            scoreAwarded = 20;
-                            landedOnMiddle = true; // Set flag for SFX
-                        }
-                        state.setScore(state.getScore() + scoreAwarded);
-
-                        // Create Score Popup
-                        state.addScorePopup({
-                            x: player.x + player.width / 2, // Start at player center
-                            y: player.y - 5, // Start slightly above player
-                            text: `+${scoreAwarded}`,
-                            creationTime: now,
-                            alpha: 0 // Start invisible, fade in
-                        });
-                    } // --- End if (!platform.isStartingPlatform) ---
-
-                    // --- Spawn next platform (check happens for ALL platforms landed on first time) ---
-                    let isHighest = true;
-                    for(let p of platforms) {
-                        if (!p.landedOn && p.y < platform.y) {
-                            isHighest = false;
-                            break;
-                        }
-                    }
-                    if(isHighest) {
-                        spawnNewPlatform(platform);
+                    // Toggle visibility based on interval
+                    if (now - platform.lastFlashToggleTime >= platform.flashInterval) {
+                        platform.flashVisible = !platform.flashVisible;
+                        platform.lastFlashToggleTime = now;
+                        // console.log(`Plat ${platform.id} flash interval: ${platform.flashInterval.toFixed(0)}, visible: ${platform.flashVisible}`); // DEBUG
                     }
                 }
             }
-            if(platform.y < highestPlatformY && !platform.isDisappearing) {
-                highestPlatformY = platform.y;
+        }
+        
+        // Check for landing collision
+        const playerBottom = player.y + player.height;
+        const prevPlayerBottom = previousY + player.height; // Keep for potential future use, but not primary check now
+        
+        // Refined collision check
+        if (!platform.isDisappearing &&
+            player.x < platform.x + platform.width &&    // Horizontal overlap
+            player.x + player.width > platform.x &&
+            playerBottom >= platform.y &&               // Player bottom is at or below platform top
+            playerBottom <= platform.y + platform.height && // Player bottom is not below platform bottom 
+            player.velocityY >= 0) {                   // Player is moving down or still
+            
+            // LANDING OCCURRED
+            console.log(`Landing detected on platform ${platform.id}`);
+            player.y = platform.y - player.height;
+            player.velocityY = 0;
+            player.isGrounded = true;
+            player.jumpsLeft = 2;
+            player.currentFriction = platform.friction;
+            currentLandingPlatform = platform; // Store the platform landed on THIS frame
+
+            // Scoring, Spawning, etc. (only on first landing)
+            if (!platform.landedOn) {
+                platform.landedOn = true;
+                state.setLastLandedPlatformId(platform.id);
+                if (!platform.isStartingPlatform) {
+                    // SET TIMER FOR FLASH START
+                    platform.disappearStartTime = Date.now() + PLATFORM_FLASH_START_DELAY; 
+                    // Calculate score
+                    const playerCenterX = player.x + player.width / 2;
+                    let scoreAwarded = 10;
+                    if (playerCenterX >= platform.middleSection.x && playerCenterX <= platform.middleSection.x + platform.middleSection.width) {
+                        scoreAwarded = (platform.type === 'moving') ? 25 : 20;
+                        landedOnMiddle = true;
+                    }
+                    state.setScore(state.getScore() + scoreAwarded);
+                    state.addScorePopup({
+                        x: player.x + player.width / 2, // Start at player center
+                        y: player.y - 5, // Start slightly above player
+                        text: `+${scoreAwarded}`,
+                        creationTime: now,
+                        alpha: 0 // Start invisible, fade in
+                    });
+                }
+                // Spawn next platform check
+                let isHighest = true;
+                for(let p of platforms) {
+                    if (!p.landedOn && p.y < platform.y) {
+                        isHighest = false;
+                        break;
+                    }
+                }
+                if(isHighest) {
+                    spawnNewPlatform(platform);
+                }
+            }
+        } // End Collision
+    }); // End platforms.forEach
+    
+    // Update player's grounded platform reference for NEXT frame
+    player.groundedOnPlatform = currentLandingPlatform; 
+
+    // Play landing sound
+    if (player.isGrounded && !wasGrounded) {
+        audio.playLandingSound(landedOnMiddle);
+    }
+
+    // --- 4. Post-Movement Updates & Checks ---
+    // Update Score Popups
+    state.filterScorePopups(popup => {
+        const age = now - popup.creationTime;
+        if (age > SCORE_POPUP_LIFETIME) {
+            return false; // Remove expired popups
+        }
+        // Update position (Scale by dt)
+        popup.y -= SCORE_POPUP_SPEED * dt * 60;
+        // Update alpha (fade in, stay, fade out)
+        if (age < SCORE_POPUP_FADE_DURATION) {
+            // Fade in
+            popup.alpha = age / SCORE_POPUP_FADE_DURATION;
+        } else if (age > SCORE_POPUP_LIFETIME - SCORE_POPUP_FADE_DURATION) {
+            // Fade out
+            popup.alpha = (SCORE_POPUP_LIFETIME - age) / SCORE_POPUP_FADE_DURATION;
+        } else {
+            // Stay fully visible
+            popup.alpha = 1.0;
+        }
+        return true;
+    });
+
+    // Remove faded platforms
+    state.filterPlatforms(platform => !platform.remove);
+
+    // Boundary checks
+    if (player.x < 0) {
+        player.x = 0;
+        if (!player.isDashing) player.velocityX = 0;
+    }
+    if (player.x + player.width > graphics.canvas.width) {
+        player.x = graphics.canvas.width - player.width;
+        if (!player.isDashing) player.velocityX = 0;
+    }
+
+    // Camera/Scrolling & Height Update 
+    let cameraOffset = 0;
+    const cameraThreshold = graphics.canvas.height * 0.4;
+    if (player.y < cameraThreshold) {
+        cameraOffset = cameraThreshold - player.y;
+        player.y = cameraThreshold;
+        platforms.forEach(platform => {
+            platform.y += cameraOffset;
+            // Also adjust originalY for vertically moving platforms
+            if (platform.movement && platform.movement.axis === 'y') {
+                platform.originalY += cameraOffset;
             }
         });
+        const currentMaxH = state.getMaxHeight(); 
+        state.setMaxHeight(currentMaxH + (cameraOffset / 10));
+    }
+    graphics.updateStarsVertical(cameraOffset);
 
-        // Play landing sound (AFTER checking all platforms)
-        if (player.isGrounded && !wasGrounded) {
-            // console.log("Landing detected! Requesting landing sound.");
-            audio.playLandingSound(landedOnMiddle); // Pass middle flag
+    // Remove off-screen platforms
+    state.filterPlatforms(platform => platform.y < graphics.canvas.height + 50);
+
+    // Update High Scores 
+    const newHeight = state.getMaxHeight();
+    if (newHeight > state.getHighestHeight()) {
+        state.setHighestHeight(newHeight);
+    }
+    const newScore = state.getScore();
+    if (newScore > state.getTopScore()) {
+        state.setTopScore(newScore);
+    }
+
+    // --- Update Player Trail ---
+    player.trailUpdateCounter++;
+    if (player.trailUpdateCounter >= player.trailUpdateFrequency) {
+        player.trailUpdateCounter = 0;
+        // Add current position to the start of the trail
+        player.trailPositions.unshift({ x: player.x, y: player.y });
+        // Limit trail length
+        if (player.trailPositions.length > player.maxTrailLength) {
+            player.trailPositions.pop(); // Remove the oldest position
         }
+    }
+    
+    // Fall detection 
+    if (player.y > graphics.canvas.height + player.height) {
+        console.log("Fall detected!");
+        state.loseLife(); // Call loseLife from state
 
-        // --- Update Score Popups ---
-        state.filterScorePopups(popup => {
-            const age = now - popup.creationTime;
-            if (age > SCORE_POPUP_LIFETIME) {
-                return false; // Remove expired popups
-            }
-            // Update position (Scale by dt)
-            popup.y -= SCORE_POPUP_SPEED * dt * 60;
-            // Update alpha (fade in, stay, fade out)
-            if (age < SCORE_POPUP_FADE_DURATION) {
-                // Fade in
-                popup.alpha = age / SCORE_POPUP_FADE_DURATION;
-            } else if (age > SCORE_POPUP_LIFETIME - SCORE_POPUP_FADE_DURATION) {
-                // Fade out
-                popup.alpha = (SCORE_POPUP_LIFETIME - age) / SCORE_POPUP_FADE_DURATION;
-            } else {
-                // Stay fully visible
-                popup.alpha = 1.0;
-            }
-            return true;
-        });
-
-        // --- Remove faded platforms ---
-        state.filterPlatforms(platform => !platform.remove);
-
-        // --- Boundary checks ---
-        if (player.x < 0) {
-            player.x = 0;
-            if (!player.isDashing) player.velocityX = 0;
+        if (state.getLives() > 0) {
+            respawnPlayer(); // Instead of resetting, call respawn
+        } else {
+            handleGameOver(); // Trigger game over if no lives left
         }
-        if (player.x + player.width > graphics.canvas.width) {
-            player.x = graphics.canvas.width - player.width;
-            if (!player.isDashing) player.velocityX = 0;
-        }
-
-        // --- Camera/Scrolling & Height Update ---
-        let cameraOffset = 0;
-        const cameraThreshold = graphics.canvas.height * 0.4;
-        if (player.y < cameraThreshold) {
-            cameraOffset = cameraThreshold - player.y;
-            player.y = cameraThreshold;
-            state.getPlatforms().forEach(platform => {
-                platform.y += cameraOffset;
-            });
-            const currentMaxH = state.getMaxHeight(); // Use different var name
-            state.setMaxHeight(currentMaxH + (cameraOffset / 10));
-        }
-        // Move star vertical update here, linked to camera
-        graphics.updateStarsVertical(cameraOffset);
-
-        // --- Remove off-screen platforms ---
-        state.filterPlatforms(platform => platform.y < graphics.canvas.height + 50);
-
-        // --- Update High Scores (using local storage for now) ---
-        const newHeight = state.getMaxHeight();
-        if (newHeight > state.getHighestHeight()) {
-            state.setHighestHeight(newHeight);
-        }
-        const newScore = state.getScore();
-        if (newScore > state.getTopScore()) {
-            state.setTopScore(newScore);
-        }
-
-        // --- Fall detection (Game Over - Reinstate Lives Logic) ---
-        if (player.y > graphics.canvas.height + player.height) {
-            console.log("Fall detected!");
-            state.loseLife(); // Call loseLife from state
-
-            if (state.getLives() > 0) {
-                resetPlayerState(); // Only reset player if lives remain
-            } else {
-                handleGameOver(); // Trigger game over if no lives left
-            }
-        }
-    } // End of if (state is Playing)
-
-    // --- Updates that run even when paused or game over ---
-    // Update horizontal stars regardless of playing state for background movement
-    graphics.updateStarsHorizontal();
-} // End of update()
+    }
+}
 
 // --- Game Over Handler ---
 function handleGameOver() {
@@ -283,58 +373,84 @@ function handleGameOver() {
     // }
 }
 
-// --- Spawn New Platform ---
-function spawnNewPlatform(previousPlatform) {
-    const difficulty = state.getDifficultyFactor();
-    // Vertical positioning
-    const vertGapRange = MAX_VERT_GAP - MIN_VERT_GAP;
-    const scaledMinGap = MIN_VERT_GAP + 30 * difficulty;
-    const scaledGapRange = vertGapRange + 50 * difficulty;
-    const newY = previousPlatform.y - scaledMinGap - Math.random() * scaledGapRange;
+// --- Platform Spawning ---
+function spawnNewPlatform(basePlatform) {
+    // Determine type based on probabilities
+    let platformType = 'normal';
+    const rand = Math.random();
+    let cumulativeProb = 0;
 
-    // Width scaling
-    const newWidth = Math.max(PLATFORM_BASE_WIDTH * (1 - difficulty * 0.6), PLATFORM_BASE_WIDTH * 0.4);
+    if (rand < (cumulativeProb += PLATFORM_PROBABILITY.NORMAL)) {
+        platformType = 'normal';
+    } else if (rand < (cumulativeProb += PLATFORM_PROBABILITY.ICE)) {
+        platformType = 'ice';
+    } else if (rand < (cumulativeProb += PLATFORM_PROBABILITY.MOVING)) {
+        platformType = 'moving';
+    } 
+    // Add more types here if needed
+    
+    console.log(`Spawning new platform of type: ${platformType} (rand: ${rand.toFixed(2)}) based on platform ${basePlatform.id}`);
 
-    // Horizontal Placement
-    const prevX = previousPlatform.x;
-    const prevWidth = previousPlatform.width;
-    const prevCenterX = prevX + prevWidth / 2;
+    // Vertical position calculation (remains the same)
+    const screenHeight = graphics.canvas.height;
+    const yOffset = 150 + Math.random() * 100; 
+    const newY = basePlatform.y - yOffset;
 
-    const maxDoubleJumpAirTime = 2 * (PLAYER_JUMP_POWER / PLAYER_GRAVITY) * 2;
-    const maxHorizontalReach = PLAYER_SPEED * maxDoubleJumpAirTime * 0.9;
-    const maxCenterOffset = maxHorizontalReach + 100 * difficulty;
+    // Horizontal position calculation WITH overlap check
+    let newX;
+    let horizontalOverlap = true;
+    let attempts = 0;
+    const MAX_SPAWN_ATTEMPTS = 10; // Prevent infinite loops
+    const newWidth = PLATFORM_BASE_WIDTH; // Assuming fixed width for now
+    const padding = 50;
+    const existingPlatforms = state.getPlatforms(); // Get current platforms
 
-    const minCenterX = prevCenterX - maxCenterOffset;
-    const maxCenterX = prevCenterX + maxCenterOffset;
+    while (horizontalOverlap && attempts < MAX_SPAWN_ATTEMPTS) {
+        attempts++;
+        horizontalOverlap = false; // Assume no overlap for this attempt
 
-    const clampedMinCenterX = Math.max(newWidth / 2, minCenterX);
-    const clampedMaxCenterX = Math.min(graphics.canvas.width - newWidth / 2, maxCenterX);
+        // Calculate potential X (Increase range significantly)
+        const HORIZONTAL_SPAWN_RANGE = 800; // Increased from 400
+        newX = basePlatform.x + (Math.random() - 0.5) * HORIZONTAL_SPAWN_RANGE;
+        
+        // Clamp X within screen bounds (Keep this clamping)
+        newX = Math.max(padding, Math.min(newX, graphics.canvas.width - newWidth - padding));
 
-    let randomCenterX;
-    if (clampedMaxCenterX > clampedMinCenterX) {
-        randomCenterX = clampedMinCenterX + Math.random() * (clampedMaxCenterX - clampedMinCenterX);
-    } else {
-        randomCenterX = Math.max(newWidth / 2, Math.min(prevCenterX, graphics.canvas.width - newWidth / 2));
+        // Check against existing platforms BELOW the new one
+        for (const existingPlatform of existingPlatforms) {
+            // Only check platforms visually below the new one (optional, but makes sense)
+             if (existingPlatform.y > newY) { 
+                // Check for horizontal overlap
+                const overlaps = (newX < existingPlatform.x + existingPlatform.width && 
+                                  newX + newWidth > existingPlatform.x);
+                if (overlaps) {
+                    console.log(`Spawn attempt ${attempts}: Proposed X ${newX.toFixed(0)} overlaps with existing platform ${existingPlatform.id} at X ${existingPlatform.x.toFixed(0)}. Retrying.`);
+                    horizontalOverlap = true;
+                    break; // No need to check other platforms for this attempt
+                }
+             }
+        }
+    } // End while loop
+
+    if (attempts >= MAX_SPAWN_ATTEMPTS) {
+        console.warn(`Max spawn attempts reached for platform based on ${basePlatform.id}. Placing at last calculated X: ${newX.toFixed(0)}`);
     }
-    let newX = randomCenterX - newWidth / 2;
-    newX = Math.max(0, Math.min(newX, graphics.canvas.width - newWidth));
 
-    // Type randomization
-    let type = 'normal';
-    const iceChance = 0.1 + 0.15 * difficulty;
-    if (Math.random() < iceChance) {
-        type = 'ice';
-    }
-
-    state.addPlatform(createPlatform(newX, newY, type, newWidth));
+    // Create the platform with the validated/final newX
+    console.log(`Final spawn position: X=${newX.toFixed(0)}, Y=${newY.toFixed(0)}`);
+    const newPlatform = createPlatform(newX, newY, platformType, newWidth); // Pass width too
+    state.addPlatform(newPlatform);
 }
 
 // --- Reset Player State ---
 function resetPlayerState() {
     console.log("Resetting player object state...");
     // Reset properties of the imported player object
-    player.x = graphics.canvas.width / 2 - player.width / 2;
-    player.y = graphics.canvas.height - 100; // Start position
+    const startX = graphics.canvas.width / 2 - player.width / 2;
+    const startY = graphics.canvas.height - 100; // Calculate start Y
+    player.x = startX;
+    player.y = startY;
+    state.setInitialPlayerY(startY); // <<< STORE INITIAL Y HERE
     player.velocityY = 0;
     player.velocityX = 0;
     player.jumpsLeft = 2;
@@ -352,6 +468,71 @@ function resetPlayerState() {
         PLATFORM_BASE_WIDTH, // width
         true // isStarting = true
     )]);
+}
+
+// --- Player Respawn Function (REVISED) ---
+function respawnPlayer() {
+    console.log("Respawning player...");
+    const targetPlatformId = state.getLastLandedPlatformId();
+    let respawnPlatform = null;
+    const platforms = state.getPlatforms();
+
+    console.log(`Attempting to respawn on targetPlatformId: ${targetPlatformId}`);
+
+    // 1. Try to find the exact last landed platform
+    if (targetPlatformId !== null) {
+        respawnPlatform = platforms.find(p => p.id === targetPlatformId && !p.remove);
+    }
+
+    // 2. Fallback: If exact match not found or removed, find highest *landed on* platform
+    if (!respawnPlatform) {
+        console.warn(`Target platform ${targetPlatformId} not found/available. Falling back to highest landed platform.`);
+        let highestLandedY = Infinity;
+        platforms.forEach(p => {
+            if (p.landedOn && !p.remove && p.y < highestLandedY) {
+                highestLandedY = p.y;
+                respawnPlatform = p;
+            }
+        });
+    }
+    
+    // 3. Final Fallback: If still no platform, find the highest overall platform (usually starting platform)
+    if (!respawnPlatform) {
+        console.warn(`No landed platform found. Falling back to highest overall platform.`);
+        let highestY = Infinity;
+        platforms.forEach(p => {
+            if (!p.remove && p.y < highestY) {
+                highestY = p.y;
+                respawnPlatform = p;
+            }
+        });
+    }
+
+    if (respawnPlatform) {
+        console.log(`SUCCESS: Chosen respawn platform ID: ${respawnPlatform.id} at y=${respawnPlatform.y.toFixed(0)}`);
+        // Restore the platform if it was fading/gone
+        respawnPlatform.isDisappearing = false;
+        respawnPlatform.disappearStartTime = null;
+        respawnPlatform.fadeStartTime = null;
+        respawnPlatform.alpha = 1.0;
+        respawnPlatform.remove = false; 
+
+        // Reset player state and position
+        player.x = respawnPlatform.x + (respawnPlatform.width / 2) - (player.width / 2); 
+        player.y = respawnPlatform.y - player.height - 1; // Place just slightly above
+        player.velocityY = 0;
+        player.velocityX = 0;
+        player.isGrounded = false; 
+        player.jumpsLeft = 2;
+        player.isDashing = false;
+        player.gravity = PLAYER_GRAVITY;
+        state.setCurrentGameState(state.GameState.Playing); 
+        audio.restoreMusicVolume(); 
+
+    } else {
+        console.error("CRITICAL: Could not find any platform to respawn on! Triggering Game Over.");
+        handleGameOver();
+    }
 }
 
 // --- Game Loop ---
@@ -375,7 +556,7 @@ function gameLoop(timestamp) {
     }
 
     // Always draw (draw handles showing different states)
-    graphics.draw();
+    graphics.draw(player); // <<< PASS PLAYER OBJECT
 
     animationFrameId = requestAnimationFrame(gameLoop); // Store the ID
 }

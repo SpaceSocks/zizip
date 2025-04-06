@@ -121,7 +121,7 @@ export function formatTime(milliseconds, includeMilliseconds = true) {
 // --- Drawing Functions ---
 
 // Draw HUD (Heads Up Display)
-function drawHUD() {
+function drawHUD(player) {
     ctx.fillStyle = R64.WHITE;
     ctx.font = '24px Petitinho';
     const lineHeight = 30;
@@ -147,8 +147,12 @@ function drawHUD() {
     // Top Center: Time, Current Track
     ctx.textAlign = 'center';
     yPos = 30;
-    const elapsedTime = state.getElapsedTime(); // Get time in ms
-    ctx.fillText(`TIME: ${formatTime(elapsedTime, true)}`, canvas.width / 2, yPos);
+    const elapsedTimeMs = state.getElapsedTime();
+    const formattedTime = formatTime(elapsedTimeMs, true);
+    ctx.fillStyle = R64.WHITE;
+    ctx.font = '26px Petitinho';
+    ctx.textBaseline = 'top';
+    ctx.fillText(formattedTime, canvas.width / 2, 20);
     yPos += lineHeight;
     const trackName = state.getCurrentTrackInfo(); // Get from state
     if (trackName !== "None") {
@@ -156,6 +160,43 @@ function drawHUD() {
         ctx.fillText(`Playing: ${trackName}`, canvas.width / 2, yPos);
         ctx.font = '24px Petitinho'; // Reset font size
     }
+
+    // --- Real-time Height Meter (Center Right) ---
+    // Calculate current height relative to starting position
+    const startY = state.getInitialPlayerY();
+    const currentY = player ? player.y : startY;
+    // Calculate difference and scale (e.g., 10 pixels = 1 meter)
+    const currentHeight = Math.max(0, (startY - currentY) / 10);
+
+    const meterText = `${Math.floor(currentHeight)} METERS`;
+    const meterX = canvas.width - 30;
+    const meterY = canvas.height / 2;
+
+    // Draw Text
+    ctx.fillStyle = R64.WHITE;
+    ctx.font = '28px Petitinho';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(meterText, meterX, meterY);
+
+    // REMOVED STATIC Indicator Lines
+    /*
+    const INDICATOR_COUNT = 5; 
+    const INDICATOR_LENGTH = 10;
+    const INDICATOR_SPACING = 8; 
+    const INDICATOR_X_OFFSET = 15;
+    const indicatorX = meterX - INDICATOR_X_OFFSET - (ctx.measureText(meterText).width); 
+    ctx.strokeStyle = R64.WHITE;
+    ctx.lineWidth = 2;
+
+    for (let i = 0; i < INDICATOR_COUNT; i++) {
+        const lineY = meterY + (i - Math.floor(INDICATOR_COUNT / 2)) * INDICATOR_SPACING;
+        ctx.beginPath();
+        ctx.moveTo(indicatorX - INDICATOR_LENGTH / 2, lineY);
+        ctx.lineTo(indicatorX + INDICATOR_LENGTH / 2, lineY);
+        ctx.stroke();
+    }
+    */
 }
 
 // --- Fetch Leaderboard Data ---
@@ -196,96 +237,97 @@ function drawGameOver() {
     // --- Display Leaderboard --- 
     const startY = canvas.height * 0.4;
     const lineHeight = 30;
-    const leaderboardHeight = 10 * lineHeight + 40; // Approx height for 10 entries + padding
-    const leaderboardWidth = canvas.width * 0.8; // Example width
-    const leaderboardX = (canvas.width - leaderboardWidth) / 2;
+    const maxEntries = 10;
+    // Reduce width - use 60% or a max pixel value
+    const leaderboardWidth = Math.min(canvas.width * 0.7, 700); // Max width of 700px, or 70% of screen
+    const leaderboardHeight = maxEntries * lineHeight + 40; 
+    const leaderboardX = (canvas.width - leaderboardWidth) / 2; // Center the narrower box
+    const padding = 20; // Reset padding maybe
 
-    // Draw semi-transparent background box
-    ctx.fillStyle = 'rgba(46, 34, 47, 0.8)'; // Dark Purple with 80% opacity
+    // Draw background box (using new width)
+    ctx.fillStyle = 'rgba(46, 34, 47, 0.8)'; 
     ctx.fillRect(leaderboardX, startY - lineHeight, leaderboardWidth, leaderboardHeight);
 
     ctx.font = '20px Petitinho';
-    ctx.fillStyle = R64.WHITE; // Reset color for text
+    ctx.fillStyle = R64.WHITE;
+    ctx.textBaseline = 'middle'; 
 
+    // --- Define Column START/END Positions based on new width ---
+    const rankX = leaderboardX + padding;
+    const nameX = rankX + 50;
+    // End points from right edge
+    const timeEndX = leaderboardX + leaderboardWidth - padding;
+    const heightEndX = timeEndX - 120; // <<< INCREASED SPACE FROM 100
+    const scoreEndX = heightEndX - 100;
+    // Name column max width derived from score start
+    const maxNameWidth = scoreEndX - nameX - 20;
+
+    // Optional: Draw Headers (Positions might need slight tweak)
+    /* 
+    ctx.fillStyle = '#aaaaaa'; // Lighter color for headers
+    ctx.textAlign = 'left';
+    ctx.fillText("RANK", rankX, startY - lineHeight / 2);
+    ctx.fillText("NAME", nameX, startY - lineHeight / 2);
+    ctx.textAlign = 'right';
+    ctx.fillText("SCORE", scoreEndX, startY - lineHeight / 2);
+    ctx.fillText("HEIGHT", heightEndX, startY - lineHeight / 2);
+    ctx.fillText("TIME", timeEndX, startY - lineHeight / 2);
+    ctx.fillStyle = R64.WHITE; // Reset color
+    */
+
+    // --- Loading / Error / Empty States ---
     if (leaderboardLoading) {
         ctx.textAlign = 'center';
-        ctx.fillText("Loading Leaderboard...", canvas.width / 2, startY + 40);
+        ctx.fillText("Loading Leaderboard...", canvas.width / 2, startY + leaderboardHeight / 2);
     } else if (leaderboardError) {
-        ctx.fillStyle = R64.RED; // Show errors in red
-        ctx.fillText(leaderboardError, canvas.width / 2, startY + 40);
-        ctx.fillStyle = R64.WHITE; // Reset color
-    } else if (leaderboardData && leaderboardData.length > 0) {
-        // --- Draw Entries --- 
-        // Define column widths - Adjust these percentages/values as needed for appearance
-        const rankWidth = leaderboardWidth * 0.08; // e.g., 8% of the box width
-        const nameWidth = leaderboardWidth * 0.27; // 27%
-        const scoreWidth = leaderboardWidth * 0.20; // 20%
-        const heightWidth = leaderboardWidth * 0.20; // 20%
-        const timeWidth = leaderboardWidth * 0.20; // 20%
-        const padding = leaderboardWidth * 0.01; // Small padding between columns
-
-        // Calculate X positions relative to the start of the background box
-        const startXRank = leaderboardX + padding;
-        const startXName = startXRank + rankWidth + padding;
-        const startXScore = startXName + nameWidth + padding;
-        const startXHeight = startXScore + scoreWidth + padding;
-        const startXTime = startXHeight + heightWidth + padding;
-
-        const lastScore = state.getLastSubmittedScore(); 
-
-        leaderboardData.forEach((entry, index) => { 
-            const yPos = startY + (index + 1) * lineHeight;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = R64.RED;
+        ctx.fillText(leaderboardError, canvas.width / 2, startY + leaderboardHeight / 2);
+    } else if (!leaderboardData || leaderboardData.length === 0) {
+        ctx.textAlign = 'center';
+        ctx.fillText("Leaderboard is empty!", canvas.width / 2, startY + leaderboardHeight / 2);
+    } else {
+        // --- Draw Entries ---
+        leaderboardData.slice(0, maxEntries).forEach((entry, index) => {
+            const y = startY + (index * lineHeight); // Position for the current line
             const rank = `${index + 1}.`;
-            const name = (entry.displayName || 'ANON').toUpperCase();
-            const scoreLabel = "SCORE:";
-            const scoreValue = `${entry.score || 0}`;
-            const heightLabel = "HEIGHT:";
-            const heightValue = `${entry.maxHeight !== undefined ? Math.round(entry.maxHeight) : 0} M`;
-            const timeLabel = "TIME:";
-            const timeValue = `${entry.time || '00:00:00'}`;
+            const displayName = entry.displayName ? entry.displayName.toUpperCase() : 'ANON';
+            const score = entry.score !== undefined ? entry.score.toString() : 'N/A'; // Convert score to string
+            const maxHeight = entry.maxHeight !== undefined ? `${Math.round(entry.maxHeight)} M` : 'N/A'; // Round height
+            const time = entry.time || 'N/A'; 
 
-            // Check if this entry matches the last submitted score
-            let isLastSubmitted = false;
+            // Highlight the last submitted score
+            const lastScore = state.getLastSubmittedScore();
             if (lastScore && 
                 entry.score === lastScore.score && 
                 entry.maxHeight === lastScore.maxHeight && 
                 entry.time === lastScore.time &&
-                entry.userId === state.getUserId()) { 
-                isLastSubmitted = true;
-                state.clearLastSubmittedScoreHighlight();
+                entry.userId === state.getUserId()) {
+                ctx.fillStyle = '#f9c22b'; // Yellow highlight
+            } else {
+                ctx.fillStyle = R64.WHITE;
             }
-            ctx.fillStyle = isLastSubmitted ? R64.YELLOW : R64.WHITE;
 
-            // Rank (Left Aligned)
+            // Draw Columns
             ctx.textAlign = 'left';
-            ctx.fillText(rank, startXRank, yPos);
+            ctx.fillText(rank, rankX, y);
             
-            // Name (Left Aligned)
-            ctx.textAlign = 'left';
-            ctx.fillText(name, startXName, yPos);
+            // Draw Name (truncated based on new maxNameWidth)
+            let truncatedName = displayName;
+            if (ctx.measureText(displayName).width > maxNameWidth) {
+                while (ctx.measureText(truncatedName + '...').width > maxNameWidth && truncatedName.length > 1) {
+                    truncatedName = truncatedName.slice(0, -1);
+                }
+                truncatedName += '...';
+            }
+            ctx.fillText(truncatedName, nameX, y);
 
-            // Score (Label Left, Value Right in column)
-            ctx.textAlign = 'left';
-            ctx.fillText(scoreLabel, startXScore, yPos);
-            ctx.textAlign = 'right';
-            ctx.fillText(scoreValue, startXScore + scoreWidth - padding, yPos); // Align to right edge of column width
-
-            // Height (Label Left, Value Right in column)
-            ctx.textAlign = 'left';
-            ctx.fillText(heightLabel, startXHeight, yPos);
-            ctx.textAlign = 'right';
-            ctx.fillText(heightValue, startXHeight + heightWidth - padding, yPos);
-
-            // Time (Label Left, Value Right in column)
-            ctx.textAlign = 'left';
-            ctx.fillText(timeLabel, startXTime, yPos);
-            ctx.textAlign = 'right';
-            ctx.fillText(timeValue, startXTime + timeWidth - padding, yPos);
+            // Draw Values Right-Aligned
+            ctx.textAlign = 'right'; 
+            ctx.fillText(score, scoreEndX, y);
+            ctx.fillText(maxHeight, heightEndX, y);
+            ctx.fillText(time, timeEndX, y);
         });
-    } else {
-        // Leaderboard is loaded but empty
-        ctx.font = '28px Petitinho';
-        ctx.fillText("Leaderboard is Empty", canvas.width / 2, startY + 40);
     }
 
     // Retry / Exit instructions - NOW HANDLED BY HTML BUTTONS
@@ -303,8 +345,32 @@ function drawGameOver() {
    ui.showGameOverControls();
 }
 
+// --- Draw Player ---
+function drawPlayer(player) {
+    // --- Draw Trail First (behind main player) ---
+    if (player.trailPositions && player.trailPositions.length > 0) {
+        const trailColor = player.color; // Use player color or a custom one
+        const maxAlpha = 0.3; // Max transparency of the ghosts
+
+        for (let i = 0; i < player.trailPositions.length; i++) {
+            const pos = player.trailPositions[i];
+            // Fade the trail out the older it gets
+            const alpha = maxAlpha * (1 - (i / player.maxTrailLength)); 
+            
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = trailColor;
+            ctx.fillRect(pos.x, pos.y, player.width, player.height);
+        }
+        ctx.globalAlpha = 1.0; // Reset alpha for the main player
+    }
+
+    // --- Draw Main Player (on top) ---
+    ctx.fillStyle = player.color;
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+}
+
 // --- Main Draw Function ---
-export function draw() {
+export function draw(player) {
     // Clear canvas
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -331,11 +397,14 @@ export function draw() {
     // if (currentGameState === state.GameState.Playing) { // REMOVE This check
 
         // Draw Player
-        ctx.fillStyle = player.color;
-        ctx.fillRect(player.x, player.y, player.width, player.height);
+        drawPlayer(player);
 
         // Draw Platforms
         state.getPlatforms().forEach(platform => {
+            if (platform.isFlashing && !platform.flashVisible) {
+                return;
+            }
+            
             ctx.globalAlpha = platform.alpha;
             ctx.fillStyle = platform.color;
             ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
@@ -359,7 +428,7 @@ export function draw() {
 
     // Draw HUD if Playing or GameOver
     if (currentGameState === state.GameState.Playing || currentGameState === state.GameState.GameOver) {
-        drawHUD();
+        drawHUD(player);
     }
 
     // Draw Game Over specifics (leaderboard, etc.)
