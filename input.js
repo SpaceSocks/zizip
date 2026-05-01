@@ -50,6 +50,10 @@ function handleKeyDown(e) {
 
     // Pause Toggle (Escape Key)
     if (e.code === 'Escape') {
+        if (state.getCurrentGameState() === state.GameState.Replay) {
+            ui.exitReplay();
+            return;
+        }
         togglePause();
         return;
     }
@@ -174,6 +178,7 @@ export function handleGamepadInput() {
             if (focusedItem.classList.contains('options-item')) {
                 // It's a slider container
                 const slider = focusedItem.querySelector('input[type="range"]');
+                const checkbox = focusedItem.querySelector('input[type="checkbox"]');
                 if (slider) {
                     let step = 5; // Adjust slider by 5% increments
                     let currentValue = parseInt(slider.value);
@@ -193,6 +198,9 @@ export function handleGamepadInput() {
                         console.log(`Slider ${slider.id} changed to ${slider.value}`);
                         slider.dispatchEvent(new Event('input', { bubbles:true }));
                     }
+                } else if (checkbox && activate) {
+                    checkbox.checked = !checkbox.checked;
+                    checkbox.dispatchEvent(new Event('change', { bubbles:true }));
                 }
             } else if (focusedItem.id === 'optionsBackButton' && activate) {
                 console.log('  Activate Back Button (Options)!');
@@ -423,6 +431,7 @@ function triggerDash(direction) {
         player.lastDashTime = now;
         // Dash direction based on trigger or fallback
         let dashDir = (direction === 'right' ? 1 : direction === 'left' ? -1 : (player.velocityX !== 0 ? Math.sign(player.velocityX) : 1));
+        player.facing = dashDir;
         player.velocityX = dashDir * PLAYER_DASH_POWER;
         player.gravity = 0; // Temporarily disable gravity
         player.velocityY = 0; // Also reset vertical velocity on dash

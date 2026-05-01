@@ -8,6 +8,7 @@ let musicPlayer;
 let sfxLandPlayer;
 let sfxMiddleLandPlayer;
 let sfxGameOverPlayer;
+let sfxPlayerDeathPlayer;
 
 // Store all SFX players for easier volume control
 let sfxPlayers = [];
@@ -32,6 +33,7 @@ let currentTrackName = "None";
 const sfxLandPath = 'Audio/SFX/Landing1.wav';
 const sfxMiddleLandPath = 'Audio/SFX/middleBlock.wav';
 const sfxGameOverPath = 'Audio/SFX/gameover.wav';
+const sfxPlayerDeathPath = 'Audio/SFX/PlayerDeath.wav';
 
 // --- Audio Setup ---
 export function setupAudioPlayers() {
@@ -42,9 +44,10 @@ export function setupAudioPlayers() {
     sfxLandPlayer = new Audio(sfxLandPath);
     sfxMiddleLandPlayer = new Audio(sfxMiddleLandPath);
     sfxGameOverPlayer = new Audio(sfxGameOverPath);
+    sfxPlayerDeathPlayer = new Audio(sfxPlayerDeathPath);
 
     // Assign initial volume and add to array
-    sfxPlayers = [sfxLandPlayer, sfxMiddleLandPlayer, sfxGameOverPlayer];
+    sfxPlayers = [sfxLandPlayer, sfxMiddleLandPlayer, sfxGameOverPlayer, sfxPlayerDeathPlayer];
     sfxPlayers.forEach(player => player.volume = sfxVolume);
 
     // Add event listener to play next track when one ends
@@ -55,10 +58,12 @@ export function setupAudioPlayers() {
     sfxLandPlayer.addEventListener('error', (e) => console.error("SFX Land Error:", e));
     sfxMiddleLandPlayer.addEventListener('error', (e) => console.error("SFX Middle Land Error:", e));
     sfxGameOverPlayer.addEventListener('error', (e) => console.error("SFX Game Over Error:", e));
+    sfxPlayerDeathPlayer.addEventListener('error', (e) => console.error("SFX Player Death Error:", e));
     musicPlayer.addEventListener('canplaythrough', () => console.log("Music can play through:", musicPlayer.src));
     sfxLandPlayer.addEventListener('canplaythrough', () => console.log("SFX Land can play through."));
     sfxMiddleLandPlayer.addEventListener('canplaythrough', () => console.log("SFX Middle Land can play through."));
     sfxGameOverPlayer.addEventListener('canplaythrough', () => console.log("SFX Game Over can play through."));
+    sfxPlayerDeathPlayer.addEventListener('canplaythrough', () => console.log("SFX Player Death can play through."));
     console.log("Audio players setup with listeners.")
 }
 
@@ -218,8 +223,13 @@ export function initializeAudio() {
         return;
     }
 
-    // Attempt to unlock via silent SFX play/pause
-    const unlockPromise = sfxLandPlayer.play().then(() => sfxLandPlayer.pause()).catch(() => {});
+    // Attempt to unlock via a user-gesture-triggered SFX play/pause.
+    // If Chrome blocks this on page load, leave audio uninitialized so a later
+    // click/key press can retry successfully.
+    const unlockPromise = sfxLandPlayer.play().then(() => {
+        sfxLandPlayer.pause();
+        sfxLandPlayer.currentTime = 0;
+    });
 
     unlockPromise.then(() => {
         if (!state.getAudioInitialized()) {
@@ -234,7 +244,7 @@ export function initializeAudio() {
             startMusic(); 
         }
     }).catch(err => {
-         console.error("Could not unlock audio context:", err);
+         console.warn("Audio unlock blocked until user interaction:", err);
     });
 }
 
@@ -253,4 +263,16 @@ export function playGameOverSound() {
     sfxGameOverPlayer.play().catch(e => {
         console.error(`Error playing Game Over SFX:`, e);
     });
-} 
+}
+
+export function playPlayerDeathSound() {
+    if (!state.getAudioInitialized() || !sfxPlayerDeathPlayer) {
+        console.warn("Cannot play Player Death sound: Audio not initialized or player not set up.");
+        return;
+    }
+    console.log("Attempting to play Player Death sound.");
+    sfxPlayerDeathPlayer.currentTime = 0;
+    sfxPlayerDeathPlayer.play().catch(e => {
+        console.error(`Error playing Player Death SFX:`, e);
+    });
+}

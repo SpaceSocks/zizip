@@ -25,10 +25,12 @@
         dashCooldown: PLAYER_DASH_COOLDOWN,
         // State variables
         isGrounded: false,
+        visible: true,
         currentFriction: 0.1,
         jumpsLeft: 2,
         isDashing: false,
         lastDashTime: 0,
+        facing: 1,
         groundedOnPlatform: null // <<< NEW: Reference to the platform player is on
     };
 

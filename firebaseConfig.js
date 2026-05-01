@@ -1,28 +1,37 @@
-// Import the necessary functions from the Firebase SDK
-// Using the CDN URLs for direct browser import
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-// Your web app's Firebase configuration
+// Firebase is loaded lazily so local/offline play can boot without CDN access.
 const firebaseConfig = {
   apiKey: "AIzaSyBNl4-fwt3BoZ-ERO1JUOo8cFwrqndlU_k",
   authDomain: "zipzip-d8d69.firebaseapp.com",
   projectId: "zipzip-d8d69",
-  storageBucket: "zipzip-d8d69.firebasestorage.app", // Your confirmed value
+  storageBucket: "zipzip-d8d69.firebasestorage.app",
   messagingSenderId: "331899133054",
   appId: "1:331899133054:web:19a3a18e212caa7bf6cc2f",
   measurementId: "G-Z9SPKPG8JG"
 };
 
-// Initialize Firebase Core App
-const app = initializeApp(firebaseConfig);
+let servicesPromise = null;
 
-// Initialize Firebase Authentication and Firestore
-const auth = getAuth(app);
-const db = getFirestore(app);
+export async function getFirebaseServices() {
+  if (!servicesPromise) {
+    servicesPromise = (async () => {
+      const [{ initializeApp }, { getAuth, useDeviceLanguage }, { getFirestore }] = await Promise.all([
+        import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
+        import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"),
+        import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js")
+      ]);
 
-// Export the initialized services so other parts of our game can use them
-export { app, auth, db };
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      useDeviceLanguage(auth);
+      const db = getFirestore(app);
 
-console.log("Firebase Initialized:", app.name); // For debugging
+      console.log("Firebase initialized:", app.name);
+      return { app, auth, db };
+    })().catch((error) => {
+      servicesPromise = null;
+      throw error;
+    });
+  }
+
+  return servicesPromise;
+}

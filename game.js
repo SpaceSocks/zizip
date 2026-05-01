@@ -5,8 +5,9 @@ import * as audio from './audio.js';
 import { player, createPlatform } from './entities.js';
 import * as ui from './ui.js'; // Import UI
 import {
-    MIN_VERT_GAP, MAX_VERT_GAP, PLATFORM_BASE_WIDTH,
-    PLAYER_GRAVITY, PLAYER_JUMP_POWER, PLAYER_SPEED,
+    MIN_VERT_GAP, MAX_VERT_GAP, PLATFORM_START_WIDTH, PLATFORM_EARLY_MIN_WIDTH, PLATFORM_MIN_WIDTH,
+    PLATFORM_WIDTH_DIFFICULTY_HEIGHT, PLAYER_GRAVITY, PLAYER_JUMP_POWER, PLAYER_SPEED,
+    PLAYER_DASH_POWER, PLAYER_DASH_DURATION,
     SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED,
     PLATFORM_PROBABILITY, PLATFORM_MIDDLE_THRESHOLD,
     PLATFORM_FLASH_DURATION, PLATFORM_FLASH_INTERVAL_MAX, PLATFORM_FLASH_INTERVAL_MIN,
@@ -19,20 +20,205 @@ console.log("Imported state object:", state);
 // --- Game Variables ---
 let animationFrameId = null;
 let lastTimestamp = 0; // Track last timestamp for delta time
+let deathSequence = null;
+let lastDeathReplayTime = 0;
+
+const DEATH_CAMERA_FOLLOW_Y_FACTOR = 0.68;
+const DEATH_EXPLODE_DELAY = 1.05;
+const DEATH_RESPAWN_DELAY = 0.65;
+const STARTING_PLATFORM_BOTTOM_OFFSET = 115;
+const RESPAWN_PLATFORM_BOTTOM_OFFSET = 150;
+const SPAWN_PADDING = 50;
+const MAX_SPAWN_ATTEMPTS = 24;
+
+function recordCurrentReplaySample(force = false, timeOverride = null) {
+    state.recordRunReplaySample({
+        time: typeof timeOverride === 'number' ? timeOverride : state.getElapsedTime(),
+        height: getCurrentRunHeight(),
+        xRatio: (player.x + player.width / 2) / graphics.canvas.width,
+        yRatio: (player.y + player.height / 2) / graphics.canvas.height,
+        facing: player.facing || 1,
+        visible: player.visible !== false,
+        cameraDrop: deathSequence?.cameraDrop || 0,
+        groundedPlatformId: player.groundedOnPlatform?.id ?? null,
+        force
+    });
+}
 
 // Add trail properties to the player object upon load
-player.trailPositions = []; 
+player.trailPositions = [];
 player.maxTrailLength = 5; // Number of ghost images
 player.trailUpdateCounter = 0;
 player.trailUpdateFrequency = 2; // Update trail every N frames
 
+function updatePlayerTrail() {
+    if (player.visible === false) return;
+
+    player.trailUpdateCounter++;
+    if (player.trailUpdateCounter >= player.trailUpdateFrequency) {
+        player.trailUpdateCounter = 0;
+        player.trailPositions.unshift({ x: player.x, y: player.y, facing: player.facing || 1 });
+        if (player.trailPositions.length > player.maxTrailLength) {
+            player.trailPositions.pop();
+        }
+    }
+}
+
+function shiftWorldForDeathCamera(offsetY) {
+    if (offsetY <= 0) return;
+
+    player.y -= offsetY;
+    player.trailPositions.forEach(position => {
+        position.y -= offsetY;
+    });
+    shiftPlatforms(-offsetY);
+}
+
+function shiftPlatforms(offsetY) {
+    state.getPlatforms().forEach(platform => {
+        const previousY = platform.previousY ?? platform.y;
+        platform.y += offsetY;
+        platform.previousY = previousY + offsetY;
+        platform.originalY += offsetY;
+        platform.middleSection.x = platform.x + platform.width * (0.5 - PLATFORM_MIDDLE_THRESHOLD / 2);
+    });
+}
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function getCurrentDifficultyFactor() {
+    const heightWeight = state.getMaxHeight() / PLATFORM_WIDTH_DIFFICULTY_HEIGHT;
+    const scoreWeight = state.getScore() / 6500;
+    return clamp(Math.max(heightWeight, scoreWeight), 0, 1);
+}
+
+function getPlatformWidthForDifficulty(difficulty) {
+    const eased = difficulty * difficulty * (3 - 2 * difficulty);
+    const smallestAllowed = Math.round(PLATFORM_EARLY_MIN_WIDTH - (PLATFORM_EARLY_MIN_WIDTH - PLATFORM_MIN_WIDTH) * eased);
+    const widestAllowed = Math.round(PLATFORM_START_WIDTH - 22 * eased);
+    const bias = Math.pow(Math.random(), 1.4 + (1 - difficulty) * 1.8);
+    return Math.round(smallestAllowed + (widestAllowed - smallestAllowed) * bias);
+}
+
+function getReachableEdgeGap(yOffset, difficulty) {
+    const discriminant = (PLAYER_JUMP_POWER * PLAYER_JUMP_POWER) - (2 * PLAYER_GRAVITY * yOffset);
+    const jumpAirFrames = discriminant > 0
+        ? (PLAYER_JUMP_POWER + Math.sqrt(discriminant)) / PLAYER_GRAVITY
+        : PLAYER_JUMP_POWER / PLAYER_GRAVITY;
+    const dashFrames = (PLAYER_DASH_DURATION / 1000) * 60;
+    const runReach = PLAYER_SPEED * jumpAirFrames;
+    const dashReach = PLAYER_DASH_POWER * dashFrames;
+
+    // Keep the spawn window a little inside the theoretical max so every new block feels fair.
+    return Math.max(175, (runReach + dashReach * 0.8) * (0.88 - difficulty * 0.08));
+}
+
+function getCurrentRunHeight() {
+    return state.getMaxHeight() + Math.max(0, (state.getInitialPlayerY() - player.y) / 10);
+}
+
+function preparePlatformForReplay(platform, replayHeight = 0) {
+    platform.replayHeight = replayHeight;
+    state.recordRunReplayPlatform(platform);
+}
+
+function beginDeathSequence() {
+    if (deathSequence) return;
+
+    console.log("Starting Unity-style death fall sequence.");
+    deathSequence = {
+        elapsed: 0,
+        cameraDrop: 0,
+        exploded: false,
+        finished: false
+    };
+
+    player.isGrounded = false;
+    player.isDashing = false;
+    player.groundedOnPlatform = null;
+    player.velocityX *= 0.35;
+    state.setCurrentGameState(state.GameState.Dying);
+}
+
+function updateDeathSequence(dt) {
+    if (!deathSequence || deathSequence.finished) return;
+
+    deathSequence.elapsed += dt;
+    const replayTime = state.getElapsedTime() + deathSequence.elapsed * 1000;
+    lastDeathReplayTime = replayTime;
+    player.velocityY += player.gravity * dt * 60;
+    player.y += player.velocityY * dt * 60;
+    player.x += player.velocityX * dt * 60;
+    player.velocityX *= 0.985;
+    if (Math.abs(player.velocityX) > 0.1) {
+        player.facing = Math.sign(player.velocityX);
+    }
+    updatePlayerTrail();
+
+    const followY = graphics.canvas.height * DEATH_CAMERA_FOLLOW_Y_FACTOR;
+    if (player.y > followY) {
+        const cameraOffset = player.y - followY;
+        deathSequence.cameraDrop += cameraOffset;
+        shiftWorldForDeathCamera(cameraOffset);
+    }
+
+    graphics.updateStarsHorizontal();
+    recordCurrentReplaySample(false, replayTime);
+
+    if (!deathSequence.exploded && deathSequence.elapsed >= DEATH_EXPLODE_DELAY) {
+        deathSequence.exploded = true;
+        state.loseLife();
+        player.visible = false;
+        player.velocityX = 0;
+        player.velocityY = 0;
+        state.recordRunReplayEvent({
+            type: 'death',
+            time: replayTime,
+            xRatio: (player.x + player.width / 2) / graphics.canvas.width,
+            yRatio: (player.y + player.height / 2) / graphics.canvas.height
+        });
+        recordCurrentReplaySample(true, replayTime);
+        graphics.spawnDeathExplosion(player.x + player.width / 2, player.y + player.height / 2);
+        audio.playPlayerDeathSound();
+    }
+
+    if (deathSequence.exploded && deathSequence.elapsed >= DEATH_EXPLODE_DELAY + DEATH_RESPAWN_DELAY) {
+        deathSequence.finished = true;
+        deathSequence = null;
+        if (state.getLives() > 0) {
+            respawnPlayer();
+        } else {
+            handleGameOver();
+        }
+    }
+}
+
+function playReplayEvents() {
+    state.consumeReplayEvents().forEach(event => {
+        if (event.type === 'landing') {
+            audio.playLandingSound(!!event.middle);
+        } else if (event.type === 'death') {
+            graphics.spawnDeathExplosion(
+                (event.xRatio ?? 0.5) * graphics.canvas.width,
+                (event.yRatio ?? 0.68) * graphics.canvas.height
+            );
+            audio.playPlayerDeathSound();
+        } else if (event.type === 'gameover') {
+            audio.playGameOverSound();
+        }
+    });
+}
+
 // --- Main Update Function ---
 function update(dt) {
     if (state.getCurrentGameState() !== state.GameState.Playing) return;
-    
+
     state.updateElapsedTime();
     const now = Date.now();
-    const difficulty = state.getDifficultyFactor(); 
+    const difficulty = getCurrentDifficultyFactor();
+    state.setDifficultyFactor(difficulty);
     const platforms = state.getPlatforms();
 
     // --- 1. Update ALL Platform Positions ---
@@ -46,12 +232,12 @@ function update(dt) {
             if (platform.movement.axis === 'x') {
                 platformDeltaX = platform.movement.direction * move;
                 platform.x += platformDeltaX;
-                
+
                 // Check range relative to originalX first
                 if (platform.x > platform.originalX + platform.movement.range || platform.x < platform.originalX - platform.movement.range) {
                     platform.movement.direction *= -1;
                     // Clamp position relative to range
-                    platform.x = Math.max(platform.originalX - platform.movement.range, Math.min(platform.x, platform.originalX + platform.movement.range)); 
+                    platform.x = Math.max(platform.originalX - platform.movement.range, Math.min(platform.x, platform.originalX + platform.movement.range));
                     platformDeltaX = 0; // No delta if clamped this way for range
                 }
 
@@ -71,7 +257,7 @@ function update(dt) {
                     }
                     platformDeltaX = 0; // No delta if hit edge
                 }
-                
+
                 platform.middleSection.x = platform.x + platform.width * (0.5 - PLATFORM_MIDDLE_THRESHOLD / 2);
             } else { // Axis 'y'
                 platformDeltaY = platform.movement.direction * move;
@@ -93,14 +279,14 @@ function update(dt) {
     let landedOnMiddle = false;
     player.isGrounded = false; // Assume not grounded this frame
     let currentLandingPlatform = null; // Platform landed on *this* frame
-    
+
     // Apply vertical movement from the platform the player *was* on
     if (player.groundedOnPlatform) {
         const deltaYToApply = player.groundedOnPlatform.deltaYThisFrame || 0;
         player.y += deltaYToApply;
         if (deltaYToApply !== 0) console.log(`Applying prev platform Y delta ${deltaYToApply.toFixed(2)} to player Y from platform ${player.groundedOnPlatform.id}`);
     }
-    
+
     // Apply gravity (only if not dashing)
     if (!player.isDashing) {
         player.velocityY += player.gravity * dt * 60;
@@ -113,7 +299,7 @@ function update(dt) {
         // Update platform flashing state (can happen regardless of collision)
         if (platform.landedOn && !platform.isStartingPlatform) {
             // --- Start Flashing Check ---
-            if (platform.disappearStartTime && !platform.isFlashing) { 
+            if (platform.disappearStartTime && !platform.isFlashing) {
                 if (now >= platform.disappearStartTime) {
                     console.log(`Platform ${platform.id} starting to flash.`);
                     platform.isFlashing = true;
@@ -135,9 +321,9 @@ function update(dt) {
                 } else {
                     // Calculate current flash interval (linear interpolation)
                     const flashProgress = elapsedFlashTime / PLATFORM_FLASH_DURATION;
-                    platform.flashInterval = PLATFORM_FLASH_INTERVAL_MAX - 
+                    platform.flashInterval = PLATFORM_FLASH_INTERVAL_MAX -
                                               (PLATFORM_FLASH_INTERVAL_MAX - PLATFORM_FLASH_INTERVAL_MIN) * flashProgress;
-                    
+
                     // Toggle visibility based on interval
                     if (now - platform.lastFlashToggleTime >= platform.flashInterval) {
                         platform.flashVisible = !platform.flashVisible;
@@ -147,7 +333,7 @@ function update(dt) {
                 }
             }
         }
-        
+
         // --- Grounding Maintenance Check (NEW) ---
         // If player was grounded on THIS platform last frame, check if they are still basically on it
         if (player.groundedOnPlatform === platform) { // Check using reference from previous frame
@@ -155,7 +341,7 @@ function update(dt) {
             // Check horizontal overlap AND vertical proximity
             if (player.x < platform.x + platform.width &&
                 player.x + player.width > platform.x &&
-                Math.abs((player.y + player.height) - platform.y) <= verticalTolerance) 
+                Math.abs((player.y + player.height) - platform.y) <= verticalTolerance)
             {
                 // Maintain grounded state on this platform
                 // console.log(`Maintaining ground on platform ${platform.id}`); // DEBUG
@@ -169,17 +355,18 @@ function update(dt) {
 
         // --- Initial Landing Collision Check ---
         // Only run this if the grounding maintenance didn't already confirm grounding
-        if (!player.isGrounded || currentLandingPlatform !== platform) { 
+        if (!player.isGrounded || currentLandingPlatform !== platform) {
             const playerBottom = player.y + player.height;
-            const prevPlayerBottom = previousY + player.height; 
-            
+            const prevPlayerBottom = previousY + player.height;
+            const landingTolerance = Math.max(4, Math.abs(player.velocityY * dt * 60) + 2);
+
             if (!platform.isDisappearing &&
-                player.x < platform.x + platform.width &&    
+                player.x < platform.x + platform.width &&
                 player.x + player.width > platform.x &&
-                playerBottom >= platform.y &&               
-                prevPlayerBottom <= (platform.previousY ?? platform.y) && 
-                player.velocityY >= 0) {                   
-                
+                playerBottom >= platform.y &&
+                prevPlayerBottom <= (platform.previousY ?? platform.y) + landingTolerance &&
+                player.velocityY >= 0) {
+
                 // INITIAL LANDING OCCURRED
                 console.log(`Initial landing detected on platform ${platform.id}`);
                 player.y = platform.y - player.height;
@@ -195,19 +382,22 @@ function update(dt) {
                     state.setLastLandedPlatformId(platform.id);
                     if (!platform.isStartingPlatform) {
                         // SET TIMER FOR FLASH START
-                        platform.disappearStartTime = Date.now() + PLATFORM_FLASH_START_DELAY; 
+                        platform.disappearStartTime = Date.now() + PLATFORM_FLASH_START_DELAY;
                         // Calculate score
                         const playerCenterX = player.x + player.width / 2;
+                        landedOnMiddle = playerCenterX >= platform.middleSection.x && playerCenterX <= platform.middleSection.x + platform.middleSection.width;
+                        const comboInfo = state.registerPlatformLanding(landedOnMiddle);
                         let scoreAwarded = 10;
-                        if (playerCenterX >= platform.middleSection.x && playerCenterX <= platform.middleSection.x + platform.middleSection.width) {
-                            scoreAwarded = (platform.type === 'moving') ? 25 : 20;
-                            landedOnMiddle = true;
+                        if (landedOnMiddle) {
+                            const baseScore = (platform.type === 'moving') ? 25 : 20;
+                            scoreAwarded = baseScore * comboInfo.multiplier;
                         }
                         state.setScore(state.getScore() + scoreAwarded);
+                        const comboSuffix = landedOnMiddle && comboInfo.multiplier > 1 ? ` x${comboInfo.multiplier}` : '';
                         state.addScorePopup({
                             x: player.x + player.width / 2, // Start at player center
                             y: player.y - 5, // Start slightly above player
-                            text: `+${scoreAwarded}`,
+                            text: `+${scoreAwarded}${comboSuffix}`,
                             creationTime: now,
                             alpha: 0 // Start invisible, fade in
                         });
@@ -227,52 +417,60 @@ function update(dt) {
             } // End Initial Landing Check
         } // End check if already grounded on this plat
     }); // End platforms.forEach
-    
+
     // Update player's grounded platform reference for NEXT frame
-    player.groundedOnPlatform = currentLandingPlatform; 
+    player.groundedOnPlatform = currentLandingPlatform;
 
     // Play landing sound
     if (player.isGrounded && !wasGrounded) {
+        state.recordRunReplayEvent({
+            type: 'landing',
+            middle: landedOnMiddle,
+            time: state.getElapsedTime()
+        });
         audio.playLandingSound(landedOnMiddle);
     }
 
-    // --- 4. Player Horizontal Movement (AFTER collision/ground check) --- 
+    // --- 4. Player Horizontal Movement (AFTER collision/ground check) ---
     let targetVelocityX = 0;
-    
+
     // Set correct friction based on CURRENT grounded state
     if (player.isGrounded) {
         // If grounded, friction was set during collision by the platform.
         // We rely on `player.currentFriction` having been set correctly in the collision loop.
     } else {
         // Use air control factor if not grounded
-        player.currentFriction = PLAYER_AIR_CONTROL_FACTOR; 
+        player.currentFriction = PLAYER_AIR_CONTROL_FACTOR;
         // console.log("Using air control factor"); // DEBUG
     }
-    
+
     if (!player.isDashing) {
         // Input velocity
         if (input.keys.left) { targetVelocityX = -player.speed; }
         else if (input.keys.right) { targetVelocityX = player.speed; }
-        
+        if (targetVelocityX !== 0) {
+            player.facing = Math.sign(targetVelocityX);
+        }
+
         // Apply friction/acceleration using the correct currentFriction
         // console.log(`Applying friction: ${player.currentFriction}`); // DEBUG
         if (player.velocityX < targetVelocityX) {
-            player.velocityX = Math.min(player.velocityX + player.currentFriction * player.speed, targetVelocityX); 
+            player.velocityX = Math.min(player.velocityX + player.currentFriction * player.speed, targetVelocityX);
         } else if (player.velocityX > targetVelocityX) {
-            player.velocityX = Math.max(player.velocityX - player.currentFriction * player.speed, targetVelocityX); 
+            player.velocityX = Math.max(player.velocityX - player.currentFriction * player.speed, targetVelocityX);
         }
     }
-    
+
     // Apply player's own horizontal velocity
     player.x += player.velocityX * dt * 60;
-    
+
     // Apply horizontal carrying from the platform the player *was* on
     if (player.groundedOnPlatform) { // Check ref from prev frame for carrying
         const deltaXToAdd = player.groundedOnPlatform.deltaXThisFrame || 0;
         player.x += deltaXToAdd;
     }
 
-    // --- 5. Post-Movement Updates & Checks --- 
+    // --- 5. Post-Movement Updates & Checks ---
     // Update Score Popups
     state.filterScorePopups(popup => {
         const age = now - popup.creationTime;
@@ -308,7 +506,7 @@ function update(dt) {
         if (!player.isDashing) player.velocityX = 0;
     }
 
-    // Camera/Scrolling & Height Update 
+    // Camera/Scrolling & Height Update
     let cameraOffset = 0;
     const cameraThreshold = graphics.canvas.height * 0.4;
     if (player.y < cameraThreshold) {
@@ -321,7 +519,7 @@ function update(dt) {
                 platform.originalY += cameraOffset;
             }
         });
-        const currentMaxH = state.getMaxHeight(); 
+        const currentMaxH = state.getMaxHeight();
         state.setMaxHeight(currentMaxH + (cameraOffset / 10));
     }
     graphics.updateStarsVertical(cameraOffset);
@@ -329,7 +527,7 @@ function update(dt) {
     // Remove off-screen platforms
     state.filterPlatforms(platform => platform.y < graphics.canvas.height + 50);
 
-    // Update High Scores 
+    // Update High Scores
     const newHeight = state.getMaxHeight();
     if (newHeight > state.getHighestHeight()) {
         state.setHighestHeight(newHeight);
@@ -339,28 +537,15 @@ function update(dt) {
         state.setTopScore(newScore);
     }
 
+    recordCurrentReplaySample();
+
     // --- Update Player Trail ---
-    player.trailUpdateCounter++;
-    if (player.trailUpdateCounter >= player.trailUpdateFrequency) {
-        player.trailUpdateCounter = 0;
-        // Add current position to the start of the trail
-        player.trailPositions.unshift({ x: player.x, y: player.y });
-        // Limit trail length
-        if (player.trailPositions.length > player.maxTrailLength) {
-            player.trailPositions.pop(); // Remove the oldest position
-        }
-    }
-    
-    // Fall detection 
+    updatePlayerTrail();
+
+    // Fall detection
     if (player.y > graphics.canvas.height + player.height) {
         console.log("Fall detected!");
-        state.loseLife(); // Call loseLife from state
-
-        if (state.getLives() > 0) {
-            respawnPlayer(); // Instead of resetting, call respawn
-        } else {
-            handleGameOver(); // Trigger game over if no lives left
-        }
+        beginDeathSequence();
     }
 }
 
@@ -371,15 +556,17 @@ function handleGameOver() {
     const finalHeight = state.getMaxHeight();
     const finalTimeMs = state.getElapsedTime(); // Get time in MS
     const formattedTime = graphics.formatTime(finalTimeMs, false); // <<< FORMAT TIME (MM:SS)
-
-    // Add entry to leaderboard state
-    const playerName = state.getDisplayName() || 'Player';
-    // Pass the formatted time string to the leaderboard entry function
-    state.addLeaderboardEntry(playerName, finalScore, finalHeight, formattedTime);
+    state.recordRunReplayEvent({
+        type: 'gameover',
+        time: lastDeathReplayTime || finalTimeMs
+    });
+    const savedBestGhost = state.maybeSaveBestRunReplay(finalScore, finalHeight, formattedTime);
+    if (savedBestGhost) {
+        console.log("Saved new best-run ghost replay.");
+    }
 
     // Play game over sound
-    // audio.playGameOverSound(); // <<< COMMENTED OUT FOR NOW
-    audio.pauseMusic();
+    audio.playGameOverSound();
 
     // Update Game State
     state.setCurrentGameState(state.GameState.GameOver);
@@ -387,6 +574,12 @@ function handleGameOver() {
     // Show Game Over UI elements
     ui.showGameOverControls();
     ui.setupGameOverFocus();
+
+    // Add entry to leaderboard state, then force-refresh the displayed board.
+    const playerName = state.getDisplayName() || 'Player';
+    graphics.invalidateLeaderboard();
+    state.addLeaderboardEntry(playerName, finalScore, finalHeight, formattedTime)
+        .finally(() => graphics.fetchLeaderboard(true));
 
     // --- NO LONGER NEEDED WITH LOCAL LEADERBOARD ---
     // // Get player ID for PlayFab
@@ -397,7 +590,7 @@ function handleGameOver() {
     //     playfab.submitScore(finalScore, (response) => {
     //         console.log('PlayFab Score Submitted:', response);
     //         // Fetch leaderboard after submitting
-    //         graphics.fetchLeaderboardData(); 
+    //         graphics.fetchLeaderboardData();
     //     }, (error) => {
     //         console.error('PlayFab Score Submission Error:', error);
     //         graphics.setLeaderboardError('Failed to submit score.');
@@ -406,12 +599,15 @@ function handleGameOver() {
     // } else {
     //     console.warn('Cannot submit score, player ID not found.');
     //     // Fetch leaderboard even if submission fails/skipped
-    //     graphics.fetchLeaderboardData(); 
+    //     graphics.fetchLeaderboardData();
     // }
 }
 
 // --- Platform Spawning ---
 function spawnNewPlatform(basePlatform) {
+    const difficulty = getCurrentDifficultyFactor();
+    state.setDifficultyFactor(difficulty);
+
     // Determine type based on probabilities
     let platformType = 'normal';
     const rand = Math.random();
@@ -423,46 +619,67 @@ function spawnNewPlatform(basePlatform) {
         platformType = 'ice';
     } else if (rand < (cumulativeProb += PLATFORM_PROBABILITY.MOVING)) {
         platformType = 'moving';
-    } 
+    }
     // Add more types here if needed
-    
+
     console.log(`Spawning new platform of type: ${platformType} (rand: ${rand.toFixed(2)}) based on platform ${basePlatform.id}`);
 
     // Vertical position calculation (remains the same)
     const screenHeight = graphics.canvas.height;
-    const yOffset = 150 + Math.random() * 100; 
+    const yOffset = MIN_VERT_GAP + Math.random() * (MAX_VERT_GAP - MIN_VERT_GAP);
     const newY = basePlatform.y - yOffset;
 
-    // Horizontal position calculation WITH overlap check
+    // Horizontal position calculation WITH overlap/reachability checks
     let newX;
-    let horizontalOverlap = true;
+    let needsRetry = true;
     let attempts = 0;
-    const MAX_SPAWN_ATTEMPTS = 10; // Prevent infinite loops
-    const newWidth = PLATFORM_BASE_WIDTH; // Assuming fixed width for now
-    const padding = 50;
+    const newWidth = getPlatformWidthForDifficulty(difficulty);
+    const reachableEdgeGap = getReachableEdgeGap(yOffset, difficulty);
+    const minX = SPAWN_PADDING;
+    const maxX = graphics.canvas.width - newWidth - SPAWN_PADDING;
+    const reachableMinX = basePlatform.x - reachableEdgeGap - newWidth;
+    const reachableMaxX = basePlatform.x + basePlatform.width + reachableEdgeGap;
+    const spawnMinX = clamp(reachableMinX, minX, maxX);
+    const spawnMaxX = clamp(reachableMaxX, minX, maxX);
+    const minimumEdgeGap = 18 + difficulty * 34;
     const existingPlatforms = state.getPlatforms(); // Get current platforms
 
-    while (horizontalOverlap && attempts < MAX_SPAWN_ATTEMPTS) {
+    while (needsRetry && attempts < MAX_SPAWN_ATTEMPTS) {
         attempts++;
-        horizontalOverlap = false; // Assume no overlap for this attempt
+        needsRetry = false; // Assume no overlap for this attempt
 
-        // Calculate potential X (Increase range significantly)
-        const HORIZONTAL_SPAWN_RANGE = 800; // Increased from 400
-        newX = basePlatform.x + (Math.random() - 0.5) * HORIZONTAL_SPAWN_RANGE;
-        
-        // Clamp X within screen bounds (Keep this clamping)
-        newX = Math.max(padding, Math.min(newX, graphics.canvas.width - newWidth - padding));
+        if (spawnMaxX > spawnMinX) {
+            newX = spawnMinX + Math.random() * (spawnMaxX - spawnMinX);
+        } else {
+            newX = clamp(basePlatform.x + basePlatform.width / 2 - newWidth / 2, minX, maxX);
+        }
+
+        const edgeGapFromBase = newX > basePlatform.x + basePlatform.width
+            ? newX - (basePlatform.x + basePlatform.width)
+            : basePlatform.x > newX + newWidth
+                ? basePlatform.x - (newX + newWidth)
+                : 0;
+
+        if (edgeGapFromBase > reachableEdgeGap) {
+            needsRetry = true;
+            continue;
+        }
+
+        if (edgeGapFromBase < minimumEdgeGap && attempts < MAX_SPAWN_ATTEMPTS / 2) {
+            needsRetry = true;
+            continue;
+        }
 
         // Check against existing platforms BELOW the new one
         for (const existingPlatform of existingPlatforms) {
             // Only check platforms visually below the new one (optional, but makes sense)
-             if (existingPlatform.y > newY) { 
+             if (existingPlatform.y > newY) {
                 // Check for horizontal overlap
-                const overlaps = (newX < existingPlatform.x + existingPlatform.width && 
+                const overlaps = (newX < existingPlatform.x + existingPlatform.width &&
                                   newX + newWidth > existingPlatform.x);
                 if (overlaps) {
                     console.log(`Spawn attempt ${attempts}: Proposed X ${newX.toFixed(0)} overlaps with existing platform ${existingPlatform.id} at X ${existingPlatform.x.toFixed(0)}. Retrying.`);
-                    horizontalOverlap = true;
+                    needsRetry = true;
                     break; // No need to check other platforms for this attempt
                 }
              }
@@ -470,12 +687,19 @@ function spawnNewPlatform(basePlatform) {
     } // End while loop
 
     if (attempts >= MAX_SPAWN_ATTEMPTS) {
-        console.warn(`Max spawn attempts reached for platform based on ${basePlatform.id}. Placing at last calculated X: ${newX.toFixed(0)}`);
+        const fallbackDirection = basePlatform.x + basePlatform.width / 2 < graphics.canvas.width / 2 ? 1 : -1;
+        newX = clamp(
+            basePlatform.x + (fallbackDirection * Math.min(reachableEdgeGap * 0.65, 180)),
+            minX,
+            maxX
+        );
+        console.warn(`Max spawn attempts reached for platform based on ${basePlatform.id}. Using reachable fallback X: ${newX.toFixed(0)}`);
     }
 
     // Create the platform with the validated/final newX
-    console.log(`Final spawn position: X=${newX.toFixed(0)}, Y=${newY.toFixed(0)}`);
+    console.log(`Final spawn position: X=${newX.toFixed(0)}, Y=${newY.toFixed(0)}, width=${newWidth}, reach=${reachableEdgeGap.toFixed(0)}, difficulty=${difficulty.toFixed(2)}`);
     const newPlatform = createPlatform(newX, newY, platformType, newWidth); // Pass width too
+    preparePlatformForReplay(newPlatform, (basePlatform.replayHeight || 0) + yOffset / 10);
     state.addPlatform(newPlatform);
 }
 
@@ -483,28 +707,44 @@ function spawnNewPlatform(basePlatform) {
 function resetPlayerState() {
     console.log("Resetting player object state...");
     // Reset properties of the imported player object
-    const startX = graphics.canvas.width / 2 - player.width / 2;
-    const startY = graphics.canvas.height - 100; // Calculate start Y
+    const startingPlatform = createPlatform(
+        graphics.canvas.width / 2 - PLATFORM_START_WIDTH / 2,
+        graphics.canvas.height - STARTING_PLATFORM_BOTTOM_OFFSET,
+        'normal',
+        PLATFORM_START_WIDTH,
+        true
+    );
+    startingPlatform.landedOn = true;
+    startingPlatform.replayHeight = 0;
+
+    const startX = startingPlatform.x + (startingPlatform.width / 2) - (player.width / 2);
+    const startY = startingPlatform.y - player.height - 1;
     player.x = startX;
     player.y = startY;
     state.setInitialPlayerY(startY); // <<< STORE INITIAL Y HERE
     player.velocityY = 0;
     player.velocityX = 0;
     player.jumpsLeft = 2;
-    player.isGrounded = false;
+    player.isGrounded = true;
+    player.visible = true;
     player.isDashing = false;
     player.lastDashTime = 0;
+    player.facing = 1;
     player.gravity = PLAYER_GRAVITY; // Ensure gravity is reset if it changes
     player.speed = PLAYER_SPEED; // Ensure speed is reset if it changes
+    player.groundedOnPlatform = startingPlatform;
+    state.setLastLandedPlatformId(startingPlatform.id);
+    deathSequence = null;
+    lastDeathReplayTime = 0;
 
     // Clear platforms and add a new starting one
-    state.setPlatforms([createPlatform(
-        graphics.canvas.width / 2 - PLATFORM_BASE_WIDTH / 2, 
-        graphics.canvas.height - 50,
-        'normal', // type
-        PLATFORM_BASE_WIDTH, // width
-        true // isStarting = true
-    )]);
+    state.setPlatforms([startingPlatform]);
+    state.setRunReplayMeta({
+        canvasWidth: graphics.canvas.width,
+        canvasHeight: graphics.canvas.height
+    });
+    state.recordRunReplayPlatform(startingPlatform);
+    spawnNewPlatform(startingPlatform);
 }
 
 // --- Player Respawn Function (REVISED) ---
@@ -532,7 +772,7 @@ function respawnPlayer() {
             }
         });
     }
-    
+
     // 3. Final Fallback: If still no platform, find the highest overall platform (usually starting platform)
     if (!respawnPlatform) {
         console.warn(`No landed platform found. Falling back to highest overall platform.`);
@@ -547,24 +787,32 @@ function respawnPlayer() {
 
     if (respawnPlatform) {
         console.log(`SUCCESS: Chosen respawn platform ID: ${respawnPlatform.id} at y=${respawnPlatform.y.toFixed(0)}`);
+        const desiredRespawnPlatformY = graphics.canvas.height - RESPAWN_PLATFORM_BOTTOM_OFFSET;
+        shiftPlatforms(desiredRespawnPlatformY - respawnPlatform.y);
+
         // Restore the platform if it was fading/gone
         respawnPlatform.isDisappearing = false;
         respawnPlatform.disappearStartTime = null;
         respawnPlatform.fadeStartTime = null;
         respawnPlatform.alpha = 1.0;
-        respawnPlatform.remove = false; 
+        respawnPlatform.remove = false;
 
         // Reset player state and position
-        player.x = respawnPlatform.x + (respawnPlatform.width / 2) - (player.width / 2); 
+        player.x = respawnPlatform.x + (respawnPlatform.width / 2) - (player.width / 2);
         player.y = respawnPlatform.y - player.height - 1; // Place just slightly above
         player.velocityY = 0;
         player.velocityX = 0;
-        player.isGrounded = false; 
+        player.isGrounded = true;
+        player.visible = true;
         player.jumpsLeft = 2;
         player.isDashing = false;
+        player.facing = 1;
         player.gravity = PLAYER_GRAVITY;
-        state.setCurrentGameState(state.GameState.Playing); 
-        audio.restoreMusicVolume(); 
+        player.groundedOnPlatform = respawnPlatform;
+        state.setLastLandedPlatformId(respawnPlatform.id);
+        recordCurrentReplaySample(true, (lastDeathReplayTime || state.getElapsedTime()) + 1);
+        state.setCurrentGameState(state.GameState.Playing);
+        audio.restoreMusicVolume();
 
     } else {
         console.error("CRITICAL: Could not find any platform to respawn on! Triggering Game Over.");
@@ -587,15 +835,32 @@ function gameLoop(timestamp) {
     const currentState = state.getCurrentGameState();
     if (currentState === state.GameState.Playing) {
         update(dt); // Pass dt to update
+    } else if (currentState === state.GameState.Dying) {
+        updateDeathSequence(dt);
     } else if (currentState === state.GameState.GameOver || currentState === state.GameState.Paused) {
         // Still update horizontal stars in game over or paused
-        graphics.updateStarsHorizontal(); 
+        graphics.updateStarsHorizontal();
+    } else if (currentState === state.GameState.Replay) {
+        const replayWasPlaying = state.getReplayViewer()?.playing;
+        state.updateReplayPlayback(dt * 1000);
+        if (replayWasPlaying) {
+            playReplayEvents();
+        }
+        graphics.updateStarsHorizontal();
+        ui.updateReplayControls();
     }
 
     // Always draw (draw handles showing different states)
     graphics.draw(player); // <<< PASS PLAYER OBJECT
 
     animationFrameId = requestAnimationFrame(gameLoop); // Store the ID
+}
+
+export function ensureGameLoop() {
+    if (!animationFrameId) {
+        lastTimestamp = 0;
+        animationFrameId = requestAnimationFrame(gameLoop);
+    }
 }
 
 // --- Initial Game Logic Setup (Called by UI) ---
@@ -617,11 +882,9 @@ export function startGame() {
 
     audio.startMusic();
     // Reset timestamp for dt calculation
-    lastTimestamp = 0; 
+    lastTimestamp = 0;
     // Only start loop if not already running
-    if (!animationFrameId) {
-        animationFrameId = requestAnimationFrame(gameLoop);
-    }
+    ensureGameLoop();
 }
 
 // --- Main Initialization (Runs on script load) ---
@@ -631,10 +894,10 @@ function mainInit() {
     window.addEventListener('resize', graphics.resizeCanvas);
 
     audio.setupAudioPlayers(); // Setup audio elements and listeners
-    
+
     // Attempt initial audio unlock/start immediately
     // User interaction might still be needed, but try anyway
-    audio.initializeAudio(); 
+    audio.initializeAudio();
 
     ui.initializeUI(); // Shows main menu, sets up auth listeners
     input.initializeInput(); // Sets up key/gamepad listeners (also calls initializeAudio)
@@ -644,4 +907,4 @@ function mainInit() {
     // requestAnimationFrame(gameLoop); // REMOVE - Don't start game loop here
 }
 
-mainInit(); 
+mainInit();

@@ -1,4 +1,4 @@
-// This file will hold game constants 
+// This file will hold game constants
 
 // --- Resurrect 64 Palette ---
 export const R64 = {
@@ -41,14 +41,20 @@ export const PLAYER_DASH_DURATION = 150;
 export const PLAYER_DASH_COOLDOWN = 500;
 
 export const PLATFORM_BASE_WIDTH = 100;
+export const PLATFORM_START_WIDTH = 160;
+export const PLATFORM_EARLY_MIN_WIDTH = 118;
+export const PLATFORM_MIN_WIDTH = 62;
+export const PLATFORM_WIDTH_DIFFICULTY_HEIGHT = 2600;
 export const PLATFORM_HEIGHT = 20;
 export const PLATFORM_MIDDLE_THRESHOLD = 0.3;
 export const MOVING_PLATFORM_SPEED = 80;
 
+export const MAX_PERFECT_COMBO_MULTIPLIER = 5;
+
 export const MAX_LIVES = 3;
 
-export const MIN_VERT_GAP = 80;
-export const MAX_VERT_GAP = 150;
+export const MIN_VERT_GAP = 120;
+export const MAX_VERT_GAP = 210;
 
 // --- Graphics ---
 export const NUM_STARS_VERTICAL = 100;
@@ -76,4 +82,4 @@ export const PLATFORM_PROBABILITY = {
 export const PLATFORM_FLASH_START_DELAY = 3000; // ms after landing before flashing starts
 export const PLATFORM_FLASH_DURATION = 2000; // ms duration of flashing before removal
 export const PLATFORM_FLASH_INTERVAL_MAX = 300; // Initial ms between flashes (slow)
-export const PLATFORM_FLASH_INTERVAL_MIN = 50;  // Final ms between flashes (fast) 
+export const PLATFORM_FLASH_INTERVAL_MIN = 50;  // Final ms between flashes (fast)

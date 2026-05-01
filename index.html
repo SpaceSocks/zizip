@@ -3,61 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cosmic Ascent</title>
+    <title>Cosmic Zip</title>
     <!-- R64 Font -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&family=VT323&display=swap&family=Petit+Formal+Script&family=Petitet+Formal+Script" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <link rel="icon" href="data:,">
+    <link rel="icon" type="image/png" href="favicon.png?v=cosmic-zip-1">
     <!-- <script src="https://download.playfab.com/PlayFabClientApi.js"></script> -->
-    <script type="module" src="game.js" defer></script>
 </head>
 <body>
+    <canvas id="loginStarCanvas" aria-hidden="true"></canvas>
     <div id="loginScreen" class="centered-container">
-        <h1>Cosmic Ascent</h1>
+        <h1>Cosmic Zip</h1>
+        <p class="tagline">Climb a collapsing starfield. Land clean, chain jumps, and chase your best height.</p>
+        <div class="controls-panel" aria-label="Game controls">
+            <div class="control-pill"><span>Move</span><strong>A/D or Arrows</strong></div>
+            <div class="control-pill"><span>Jump</span><strong>W / Up / Space</strong></div>
+            <div class="control-pill"><span>Dash</span><strong>Q left, E right</strong></div>
+            <div class="control-pill"><span>Pause</span><strong>Esc</strong></div>
+        </div>
         <div id="authForm">
-            <div class="input-group">
-                <label for="emailInput">Email:</label>
-                <input type="email" id="emailInput" placeholder="your@email.com" required>
-            </div>
-            <div class="input-group">
-                <label for="passwordInput">Password:</label>
-                <input type="password" id="passwordInput" placeholder="Password (min 6 chars)" required>
-            </div>
-            <!-- Add Remember Password Checkbox -->
-            <div class="input-group remember-me" style="display: block;"> <!-- Initially shown for login mode -->
-                 <label style="display: inline-block; margin-right: 10px;">
-                     <input type="checkbox" id="rememberPasswordCheckbox">
-                     Remember Password (Insecure)
-                 </label>
-            </div>
-            <div class="input-group register-only" style="display: none;"> <!-- Initially hidden for login mode -->
-                <label for="aliasInput">Display Name:</label>
-                <input type="text" id="aliasInput" placeholder="Your Alias" maxlength="15">
-            </div>
+            <div class="login-lanes">
+                <section class="login-panel local-panel" aria-label="Local play">
+                    <div class="section-label">Local run</div>
+                    <div class="input-group">
+                        <label for="localAliasInput">Alias:</label>
+                        <input type="text" id="localAliasInput" placeholder="Leaderboard name" maxlength="15">
+                    </div>
+                    <button id="localPlayButton" class="auth-button primary-action">Play Local</button>
+                </section>
 
-            <div class="button-group">
-                <button id="authButton">Login</button> <!-- Changes text based on mode -->
-                <button id="quitButton">Quit</button>
+                <section class="login-panel online-panel" aria-label="Online leaderboard login">
+                    <div class="auth-divider">Online leaderboard login</div>
+
+                    <div class="input-group">
+                        <label for="emailInput">Email:</label>
+                        <input type="email" id="emailInput" placeholder="your@email.com" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="passwordInput">Password:</label>
+                        <input type="password" id="passwordInput" placeholder="Password (min 6 chars)" required>
+                    </div>
+                    <div class="input-group remember-me" style="display: block;">
+                         <label style="display: inline-block; margin-right: 10px;">
+                             <input type="checkbox" id="rememberPasswordCheckbox">
+                             Remember password
+                         </label>
+                    </div>
+                    <div class="input-group register-only" style="display: none;">
+                        <label for="aliasInput">Display Name:</label>
+                        <input type="text" id="aliasInput" placeholder="Your Alias" maxlength="15">
+                    </div>
+
+                    <div class="button-group">
+                        <button id="authButton">Login</button>
+                        <button id="quitButton">Quit</button>
+                    </div>
+                </section>
             </div>
 
             <div id="infoText">Enter email & password to Login or Register.</div>
 
-            <div class="toggle-auth">
-                <a href="#" id="toggleAuthLink">Need to Register?</a> <!-- Changes text based on mode -->
-            </div>
-            <!-- Add a section for password reset -->
-             <div class="toggle-auth">
-                <a href="#" id="resetPasswordLink" style="display: none;">Forgot Password?</a>
+            <div class="auth-links">
+                <div class="toggle-auth">
+                    <a href="#" id="toggleAuthLink">Need to Register?</a>
+                </div>
+                <div class="toggle-auth">
+                    <a href="#" id="resetPasswordLink" style="display: none;">Forgot Password?</a>
+                </div>
             </div>
 
             <!-- NEW Options Button -->
-            <button id="optionsButton" class="auth-button">Options</button>
+            <div class="menu-actions">
+                <button id="leaderboardButton" class="auth-button">Leaderboard</button>
+                <button id="optionsButton" class="auth-button">Options</button>
+            </div>
 
             <!-- Version Display Placeholder -->
             <div id="versionDisplayContainer" style="text-align: center; margin-top: 20px;">
                 <span id="versionDisplay" style="font-size: 0.8em; color: #888;"></span>
             </div>
 
+        </div>
+    </div>
+
+    <div id="leaderboardPanel" class="menu-overlay" style="display: none;">
+        <div class="menu-card leaderboard-card">
+            <h2>Leaderboard</h2>
+            <div class="leaderboard-source-toggle" role="group" aria-label="Leaderboard source">
+                <button id="localLeaderboardButton" class="source-toggle-button" type="button">Local</button>
+                <button id="globalLeaderboardButton" class="source-toggle-button" type="button">Global</button>
+            </div>
+            <div id="menuLeaderboardStatus" class="menu-status">Loading...</div>
+            <div id="menuLeaderboardList" class="menu-leaderboard-list"></div>
+            <div class="menu-actions">
+                <button id="leaderboardRefreshButton" class="menu-button game-button">Refresh</button>
+                <button id="leaderboardBackButton" class="menu-button game-button">Back</button>
+            </div>
         </div>
     </div>
 
@@ -79,25 +120,40 @@
         <h2>Options</h2>
         <div class="options-item">
             <label for="musicVolumeSlider">Music Volume:</label>
-            <input type="range" id="musicVolumeSlider" min="0" max="100" value="60"> 
-            <span id="musicVolumeValue">60%</span> 
+            <input type="range" id="musicVolumeSlider" min="0" max="100" value="60">
+            <span id="musicVolumeValue">60%</span>
         </div>
          <div class="options-item">
             <label for="sfxVolumeSlider">SFX Volume:</label>
             <input type="range" id="sfxVolumeSlider" min="0" max="100" value="60">
             <span id="sfxVolumeValue">60%</span>
         </div>
+        <div class="options-item toggle-option">
+            <label for="bestGhostToggle">Best Ghost:</label>
+            <input type="checkbox" id="bestGhostToggle" checked>
+            <span id="bestGhostValue">On</span>
+        </div>
         <button id="optionsBackButton" class="menu-button game-button">Back</button>
     </div>
 
     <!-- Game Over Buttons (Initially Hidden) -->
-    <div id="gameOverControls" style="display: none; position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; gap: 20px;">
-        <button id="retryButton" class="game-button">Retry</button>
-        <button id="mainMenuButton" class="game-button">Main Menu</button>
+    <div id="gameOverControls" style="display: none; position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); z-index: 10; gap: 20px;">
+        <button id="retryButton" class="game-button game-over-button">Retry</button>
+        <button id="mainMenuButton" class="game-button game-over-button">Main Menu</button>
+    </div>
+
+    <div id="replayControls" style="display: none;">
+        <button id="replayBackButton" class="game-button replay-button" title="Back to leaderboard">Back</button>
+        <button id="replayRewindButton" class="game-button replay-button" title="Rewind 3 seconds">◀</button>
+        <button id="replayPlayPauseButton" class="game-button replay-button" title="Play or pause">Pause</button>
+        <button id="replayForwardButton" class="game-button replay-button" title="Forward 3 seconds">▶</button>
+        <button id="replaySpeedButton" class="game-button replay-button" title="Playback speed">1x</button>
+        <input type="range" id="replayTimeline" min="0" max="1000" value="0" aria-label="Replay timeline">
+        <span id="replayTimeLabel">00:00 / 00:00</span>
     </div>
 
     <!-- Load main script as a module -->
     <script type="module" src="game.js"></script>
     <!-- Note: The Firebase SDKs are now imported within firebaseConfig.js -->
 </body>
-</html> 
+</html>
