@@ -1489,6 +1489,15 @@ body.mobile-viewport .leaderboard-card {
     overflow-x: hidden;
 }
 
+body.mobile-viewport .menu-card.leaderboard-card h2 {
+    max-width: 100%;
+    font-size: clamp(1.35rem, 7.2vw, 1.8rem);
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+}
+
 body.mobile-viewport .menu-card h2 {
     margin-bottom: 12px;
     font-size: clamp(1.65rem, 10.5vw, 2.35rem);
@@ -1653,8 +1662,10 @@ body.mobile-viewport #optionsMenu h2 {
 }
 
 body.mobile-viewport .main-menu-version {
-    right: 18px;
-    bottom: 8px;
+    position: static;
+    align-self: flex-end;
+    margin-top: -2px;
+    padding-right: 4px;
     font-size: 0.68rem;
 }
 

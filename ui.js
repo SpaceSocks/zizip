@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-66';
-import * as audio from './audio.js?v=mobile-portrait-66'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-69';
+import * as audio from './audio.js?v=mobile-portrait-69'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-66';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-69';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-66';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-69';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -578,6 +578,36 @@ function shouldUseGoogleRedirect() {
 
 function shouldUseProviderRedirect() {
     return shouldUseGoogleRedirect();
+}
+
+function getPendingRedirectProvider() {
+    return sessionStorage.getItem('zipzip_providerRedirectPending') ||
+        (sessionStorage.getItem('zipzip_googleRedirectPending') === '1' ? 'google' : '');
+}
+
+function clearPendingRedirectProvider() {
+    sessionStorage.removeItem('zipzip_providerRedirectPending');
+    sessionStorage.removeItem('zipzip_googleRedirectPending');
+}
+
+async function waitForRedirectAuthUser(auth, onAuthStateChanged, timeoutMs = 3500) {
+    if (auth.currentUser) return auth.currentUser;
+
+    return new Promise((resolve) => {
+        let settled = false;
+        let unsubscribe = () => {};
+        const finish = (user = null) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            unsubscribe();
+            resolve(user || auth.currentUser || null);
+        };
+        const timer = setTimeout(() => finish(null), timeoutMs);
+        unsubscribe = onAuthStateChanged(auth, (user) => {
+            if (user) finish(user);
+        });
+    });
 }
 
 async function startOnlineGameForUser(user, successMessage) {
@@ -1387,10 +1417,18 @@ async function initializeAuthStateListener() {
             if (user) {
                 console.log("User already signed in:", user);
                 if (state.getCurrentGameState() === state.GameState.MainMenu) {
+                    const pendingProvider = getPendingRedirectProvider();
                     const savedAlias = await loadSavedGameAlias(user);
                     if (savedAlias) {
                         state.setPlayerInfo(user.uid, savedAlias);
                         state.setActiveLeaderboardSource('global');
+                        if (!pendingProvider) {
+                            infoText.textContent = `Signed in as ${savedAlias}. Start an online run when ready.`;
+                        }
+                    } else if (requiresManualAlias(user)) {
+                        state.setPlayerInfo(user.uid, 'Online Player');
+                        state.setActiveLeaderboardSource('global');
+                        showGoogleAliasPrompt(user);
                     }
                 }
                 await clearFreshStartRemoteLeaderboard();
@@ -1416,30 +1454,28 @@ async function handleGoogleRedirectResult() {
     if (redirectResultHandled) return;
     redirectResultHandled = true;
 
-    const pendingProvider = sessionStorage.getItem('zipzip_providerRedirectPending') ||
-        (sessionStorage.getItem('zipzip_googleRedirectPending') === '1' ? 'google' : '');
+    const pendingProvider = getPendingRedirectProvider();
     if (!pendingProvider) return;
     const providerLabel = pendingProvider === 'apple' ? 'Apple' : 'Google';
 
     try {
-        const { auth, getRedirectResult } = await getAuthApi();
+        const { auth, getRedirectResult, onAuthStateChanged } = await getAuthApi();
         infoText.textContent = `Finishing ${providerLabel} sign-in...`;
         const result = await getRedirectResult(auth);
-        sessionStorage.removeItem('zipzip_providerRedirectPending');
-        sessionStorage.removeItem('zipzip_googleRedirectPending');
+        const redirectUser = result?.user || await waitForRedirectAuthUser(auth, onAuthStateChanged);
+        clearPendingRedirectProvider();
 
-        if (result?.user) {
+        if (redirectUser) {
             setProviderSignInButtonsDisabled(true);
             authButton.disabled = true;
-            await startOnlineGameForUser(result.user, `${providerLabel} sign-in successful! Starting game...`);
+            await startOnlineGameForUser(redirectUser, `${providerLabel} sign-in successful! Starting game...`);
         } else {
             authButton.disabled = false;
             setProviderSignInButtonsDisabled(false);
         }
     } catch (error) {
         console.error(`${providerLabel} redirect result error:`, error);
-        sessionStorage.removeItem('zipzip_providerRedirectPending');
-        sessionStorage.removeItem('zipzip_googleRedirectPending');
+        clearPendingRedirectProvider();
         infoText.textContent = getFirebaseAuthErrorMessage(error) || `${providerLabel} sign-in did not finish.`;
         authButton.disabled = false;
         setProviderSignInButtonsDisabled(false);
