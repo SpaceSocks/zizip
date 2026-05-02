@@ -777,10 +777,46 @@ body.game-screen-active {
 
 .achievements-card {
     width: min(94vw, 820px);
+    position: relative;
+}
+
+.menu-close-button {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    margin-left: auto;
+    margin-bottom: -42px;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background-color: #c7dcd0;
+    color: #3e3546;
+    cursor: pointer;
+    font-family: 'Petitinho', sans-serif;
+    font-size: 1.15rem;
+    line-height: 1;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.24);
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.menu-close-button:hover {
+    background-color: #ffffff;
+    transform: scale(1.03);
+}
+
+.menu-close-button:active {
+    transform: scale(0.97);
 }
 
 .achievements-card h2 {
     max-width: 100%;
+    padding: 0 50px;
     font-size: clamp(2rem, 6vw, 3.25rem);
     line-height: 0.95;
     white-space: nowrap;
@@ -1583,7 +1619,16 @@ body.mobile-viewport .achievements-card {
 }
 
 body.mobile-viewport .achievements-card h2 {
+    padding: 0 42px;
     font-size: clamp(1.55rem, 8.5vw, 2.1rem);
+}
+
+body.mobile-viewport .menu-close-button {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    margin-bottom: -38px;
+    font-size: 1rem;
 }
 
 body.mobile-viewport .achievement-row {

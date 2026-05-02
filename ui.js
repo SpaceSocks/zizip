@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-74';
-import * as audio from './audio.js?v=mobile-portrait-74'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-75';
+import * as audio from './audio.js?v=mobile-portrait-75'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-74';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-75';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-74';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-75';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -44,6 +44,7 @@ const achievementsPanel = document.getElementById('achievementsPanel');
 const achievementsSummary = document.getElementById('achievementsSummary');
 const achievementsList = document.getElementById('achievementsList');
 const achievementsBackButton = document.getElementById('achievementsBackButton');
+const achievementsCloseButton = document.getElementById('achievementsCloseButton');
 const leaderboardRefreshButton = document.getElementById('leaderboardRefreshButton');
 const leaderboardBackButton = document.getElementById('leaderboardBackButton');
 const localLeaderboardButton = document.getElementById('localLeaderboardButton');
@@ -1667,6 +1668,7 @@ export function initializeUI() {
     if (!leaderboardButton) console.error('leaderboardButton not found!');
     if (!achievementsButton) console.error('achievementsButton not found!');
     if (!achievementsPanel) console.error('achievementsPanel not found!');
+    if (!achievementsCloseButton) console.error('achievementsCloseButton not found!');
     if (!leaderboardPanel) console.error('leaderboardPanel not found!');
     if (!gameOverLeaderboardPanel) console.error('gameOverLeaderboardPanel not found!');
     if (!resetPasswordLink) console.error('resetPasswordLink not found during init!'); // Add check
@@ -1730,6 +1732,9 @@ export function initializeUI() {
     }
     if (achievementsBackButton) {
         achievementsBackButton.addEventListener('click', hideAchievementsPanel);
+    }
+    if (achievementsCloseButton) {
+        achievementsCloseButton.addEventListener('click', hideAchievementsPanel);
     }
     if (leaderboardRefreshButton) {
         leaderboardRefreshButton.addEventListener('click', () => showLeaderboardPanel(true, menuLeaderboardSource));
