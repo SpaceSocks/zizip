@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-71';
-import * as graphics from './graphics.js?v=mobile-portrait-71';
-import * as input from './input.js?v=mobile-portrait-71';
-import * as audio from './audio.js?v=mobile-portrait-71';
-import { player, createPlatform } from './entities.js?v=mobile-portrait-71';
-import * as ui from './ui.js?v=mobile-portrait-71'; // Import UI
+import * as state from './state.js?v=mobile-portrait-72';
+import * as graphics from './graphics.js?v=mobile-portrait-72';
+import * as input from './input.js?v=mobile-portrait-72';
+import * as audio from './audio.js?v=mobile-portrait-72';
+import { player, createPlatform } from './entities.js?v=mobile-portrait-72';
+import * as ui from './ui.js?v=mobile-portrait-72'; // Import UI
 import {
     MIN_VERT_GAP, MAX_VERT_GAP, PLATFORM_START_WIDTH, PLATFORM_EARLY_MIN_WIDTH, PLATFORM_MIN_WIDTH,
     PLATFORM_WIDTH_DIFFICULTY_HEIGHT, PLAYER_GRAVITY, PLAYER_JUMP_POWER, PLAYER_SPEED,
@@ -12,7 +12,7 @@ import {
     PLATFORM_PROBABILITY, PLATFORM_MIDDLE_THRESHOLD,
     PLATFORM_FLASH_DURATION, PLATFORM_FLASH_INTERVAL_MAX, PLATFORM_FLASH_INTERVAL_MIN,
     PLATFORM_FLASH_START_DELAY, PLAYER_AIR_CONTROL_FACTOR
-} from './constants.js?v=mobile-portrait-71';
+} from './constants.js?v=mobile-portrait-72';
 
 // --- Game Variables ---
 let animationFrameId = null;
@@ -32,6 +32,7 @@ const RESPAWN_PLATFORM_BOTTOM_OFFSET = 150;
 const SPAWN_PADDING = 50;
 const MAX_SPAWN_ATTEMPTS = 24;
 const MAX_REPLAY_PLATFORM_SNAPSHOTS = 16;
+const DISAPPEARING_PLATFORM_TYPES = new Set(['normal', 'ice', 'moving']);
 
 function isMobilePlayfield() {
     return graphics.canvas.width <= 720 || window.matchMedia?.('(pointer: coarse)').matches;
@@ -61,6 +62,52 @@ function getPlayerAnimationFrame(animationState, timeMs = state.getElapsedTime()
         return 0;
     }
     return 1 + Math.floor((timeMs / 1000) * 10) % 4;
+}
+
+function shouldPlatformDisappear(platform) {
+    return platform &&
+        !platform.isStartingPlatform &&
+        DISAPPEARING_PLATFORM_TYPES.has(platform.type || 'normal');
+}
+
+function schedulePlatformDisappear(platform, now) {
+    if (!shouldPlatformDisappear(platform) || platform.disappearStartTime) return;
+    platform.disappearStartTime = now + PLATFORM_FLASH_START_DELAY;
+    platform.isFlashing = false;
+    platform.flashVisible = true;
+    platform.lastFlashToggleTime = now;
+}
+
+function updatePlatformDisappearState(platform, now) {
+    if (!platform.landedOn || !shouldPlatformDisappear(platform)) return;
+
+    schedulePlatformDisappear(platform, now);
+
+    if (platform.disappearStartTime && !platform.isFlashing && now >= platform.disappearStartTime) {
+        platform.isFlashing = true;
+        platform.flashStartTime = now;
+        platform.lastFlashToggleTime = now;
+        platform.flashVisible = true;
+    }
+
+    if (!platform.isFlashing) return;
+
+    const elapsedFlashTime = now - platform.flashStartTime;
+    if (elapsedFlashTime >= PLATFORM_FLASH_DURATION) {
+        platform.remove = true;
+        platform.isFlashing = false;
+        platform.flashVisible = false;
+        return;
+    }
+
+    const flashProgress = elapsedFlashTime / PLATFORM_FLASH_DURATION;
+    platform.flashInterval = PLATFORM_FLASH_INTERVAL_MAX -
+        (PLATFORM_FLASH_INTERVAL_MAX - PLATFORM_FLASH_INTERVAL_MIN) * flashProgress;
+
+    if (now - platform.lastFlashToggleTime >= platform.flashInterval) {
+        platform.flashVisible = !platform.flashVisible;
+        platform.lastFlashToggleTime = now;
+    }
 }
 
 function recordCurrentReplaySample(force = false, timeOverride = null) {
@@ -425,41 +472,8 @@ function update(dt) {
 
     // Collision Check Loop
     platforms.forEach((platform) => {
-        // Update platform flashing state (can happen regardless of collision)
-        if (platform.landedOn && !platform.isStartingPlatform) {
-            // --- Start Flashing Check ---
-            if (platform.disappearStartTime && !platform.isFlashing) {
-                if (now >= platform.disappearStartTime) {
-                    platform.isFlashing = true;
-                    platform.flashStartTime = now;
-                    platform.lastFlashToggleTime = now;
-                    platform.flashVisible = true; // Start visible
-                }
-            }
-
-            // --- Flashing Update ---
-            if (platform.isFlashing) {
-                const elapsedFlashTime = now - platform.flashStartTime;
-
-                // Check if flashing duration is over
-                if (elapsedFlashTime >= PLATFORM_FLASH_DURATION) {
-                    platform.remove = true; // Mark for removal
-                    platform.isFlashing = false; // Stop flashing state
-                } else {
-                    // Calculate current flash interval (linear interpolation)
-                    const flashProgress = elapsedFlashTime / PLATFORM_FLASH_DURATION;
-                    platform.flashInterval = PLATFORM_FLASH_INTERVAL_MAX -
-                                              (PLATFORM_FLASH_INTERVAL_MAX - PLATFORM_FLASH_INTERVAL_MIN) * flashProgress;
-
-                    // Toggle visibility based on interval
-                    if (now - platform.lastFlashToggleTime >= platform.flashInterval) {
-                        platform.flashVisible = !platform.flashVisible;
-                        platform.lastFlashToggleTime = now;
-                        // console.log(`Plat ${platform.id} flash interval: ${platform.flashInterval.toFixed(0)}, visible: ${platform.flashVisible}`); // DEBUG
-                    }
-                }
-            }
-        }
+        updatePlatformDisappearState(platform, now);
+        if (platform.remove) return;
 
         // --- Grounding Maintenance Check (NEW) ---
         // If player was grounded on THIS platform last frame, check if they are still basically on it
@@ -507,8 +521,7 @@ function update(dt) {
                     platform.landedOn = true;
                     state.setLastLandedPlatformId(platform.id);
                     if (!platform.isStartingPlatform) {
-                        // SET TIMER FOR FLASH START
-                        platform.disappearStartTime = Date.now() + PLATFORM_FLASH_START_DELAY;
+                        schedulePlatformDisappear(platform, now);
                         // Calculate score
                         const playerCenterX = player.x + player.width / 2;
                         landedOnMiddle = playerCenterX >= platform.middleSection.x && playerCenterX <= platform.middleSection.x + platform.middleSection.width;
@@ -627,8 +640,14 @@ function update(dt) {
         return true;
     });
 
-    // Remove faded platforms
+    // Remove disappeared platforms and drop the player if the floor just vanished.
+    const groundedPlatformRemoved = player.groundedOnPlatform?.remove === true;
     state.filterPlatforms(platform => !platform.remove);
+    if (groundedPlatformRemoved) {
+        player.groundedOnPlatform = null;
+        player.isGrounded = false;
+        player.currentFriction = PLAYER_AIR_CONTROL_FACTOR;
+    }
 
     // Boundary checks
     if (player.x < 0) {
