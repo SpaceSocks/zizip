@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-69';
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-69';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-70';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-70';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({

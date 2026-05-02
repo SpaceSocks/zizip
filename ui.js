@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-69';
-import * as audio from './audio.js?v=mobile-portrait-69'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-70';
+import * as audio from './audio.js?v=mobile-portrait-70'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-69';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-70';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-69';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-70';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -482,6 +482,29 @@ function isValidAlias(alias) {
 function requiresManualAlias(user) {
     return Array.isArray(user?.providerData) &&
         user.providerData.some(provider => ['google.com', 'apple.com'].includes(provider?.providerId));
+}
+
+function getFirebaseProviderId(providerId) {
+    if (providerId === 'google') return 'google.com';
+    if (providerId === 'apple') return 'apple.com';
+    if (providerId === 'password') return 'password';
+    return providerId;
+}
+
+function getProviderLabelForUser(user) {
+    const providerIds = Array.isArray(user?.providerData)
+        ? user.providerData.map(provider => provider?.providerId).filter(Boolean)
+        : [];
+    if (providerIds.includes('apple.com')) return 'Apple';
+    if (providerIds.includes('google.com')) return 'Google';
+    if (providerIds.includes('password')) return 'email';
+    return 'this account';
+}
+
+function userHasProvider(user, providerId) {
+    const firebaseProviderId = getFirebaseProviderId(providerId);
+    return Array.isArray(user?.providerData) &&
+        user.providerData.some(provider => provider?.providerId === firebaseProviderId);
 }
 
 function setProviderSignInButtonsDisabled(disabled) {
@@ -1043,6 +1066,20 @@ async function startProviderSignIn(providerLabel, providerId, providerFactory) {
             signInWithPopup,
             signInWithRedirect
         } = await getAuthApi();
+
+        if (auth.currentUser) {
+            if (userHasProvider(auth.currentUser, providerId)) {
+                await startOnlineGameForUser(auth.currentUser, `Already signed in with ${providerLabel}. Starting game...`);
+                return;
+            }
+
+            const currentProviderLabel = getProviderLabelForUser(auth.currentUser);
+            infoText.textContent = `Already signed in with ${currentProviderLabel}. Sign out before using ${providerLabel}.`;
+            authButton.disabled = false;
+            setProviderSignInButtonsDisabled(false);
+            return;
+        }
+
         const provider = providerFactory({ GoogleAuthProvider, OAuthProvider });
 
         if (shouldUseProviderRedirect()) {
@@ -1280,11 +1317,31 @@ function handleMainMenuClick() {
     state.setCurrentGameState(state.GameState.MainMenu);
 }
 
-function handleQuitClick() {
-    infoText.textContent = "Quit action not fully implemented.";
-    console.log("Quit button clicked.");
-    // Optional: Could try to sign the user out here if desired
-    // auth.signOut();
+async function handleQuitClick() {
+    console.log("Quit/sign out button clicked.");
+    hideGoogleAliasPrompt();
+    try {
+        const { auth, signOut } = await getAuthApi();
+        if (!auth.currentUser) {
+            infoText.textContent = 'No online account is signed in.';
+            return;
+        }
+        authButton.disabled = true;
+        setProviderSignInButtonsDisabled(true);
+        quitButton.disabled = true;
+        await signOut(auth);
+        state.setPlayerInfo('local-player', localAliasInput?.value || 'Local Player');
+        state.setActiveLeaderboardSource('local');
+        state.clearLeaderboardCache();
+        infoText.textContent = 'Signed out. Choose a sign-in method or play local.';
+    } catch (error) {
+        console.error("Sign out error:", error);
+        infoText.textContent = 'Could not sign out. Refresh the page and try again.';
+    } finally {
+        authButton.disabled = false;
+        setProviderSignInButtonsDisabled(false);
+        quitButton.disabled = false;
+    }
 }
 
 function handleLocalPlayClick() {
@@ -1416,6 +1473,7 @@ async function initializeAuthStateListener() {
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 console.log("User already signed in:", user);
+                if (quitButton) quitButton.textContent = 'Sign Out';
                 if (state.getCurrentGameState() === state.GameState.MainMenu) {
                     const pendingProvider = getPendingRedirectProvider();
                     const savedAlias = await loadSavedGameAlias(user);
@@ -1434,6 +1492,7 @@ async function initializeAuthStateListener() {
                 await clearFreshStartRemoteLeaderboard();
             } else {
                 console.log("No user signed in.");
+                if (quitButton) quitButton.textContent = 'Quit';
             }
             authButton.disabled = false;
             setProviderSignInButtonsDisabled(false);
