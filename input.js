@@ -1,10 +1,10 @@
 // This file will handle keyboard and gamepad input 
-import * as state from './state.js?v=mobile-portrait-83';
-import * as audio from './audio.js?v=mobile-portrait-83';
-import * as ui from './ui.js?v=mobile-portrait-83';
-import { player } from './entities.js?v=mobile-portrait-83';
-import { AXIS_DEADZONE, PLAYER_JUMP_POWER } from './constants.js?v=mobile-portrait-83';
-import { getPlatforms } from './state.js?v=mobile-portrait-83'; // Import getPlatforms
+import * as state from './state.js?v=mobile-portrait-84';
+import * as audio from './audio.js?v=mobile-portrait-84';
+import * as ui from './ui.js?v=mobile-portrait-84';
+import { player } from './entities.js?v=mobile-portrait-84';
+import { AXIS_DEADZONE, PLAYER_JUMP_POWER } from './constants.js?v=mobile-portrait-84';
+import { getPlatforms } from './state.js?v=mobile-portrait-84'; // Import getPlatforms
 
 // --- Input State (shared within this module) ---
 export const keys = {
@@ -12,6 +12,69 @@ export const keys = {
     right: false,
     up: false
 };
+
+const keyboardMoveKeys = {
+    left: false,
+    right: false
+};
+
+const touchMoveKeys = {
+    left: false,
+    right: false
+};
+
+const gamepadMoveKeys = {
+    left: false,
+    right: false
+};
+
+function syncHorizontalInput() {
+    const keyboardHasMove = keyboardMoveKeys.left || keyboardMoveKeys.right;
+    const touchHasMove = touchMoveKeys.left || touchMoveKeys.right;
+    const gamepadHasMove = gamepadMoveKeys.left || gamepadMoveKeys.right;
+
+    if (keyboardHasMove) {
+        keys.left = keyboardMoveKeys.left;
+        keys.right = keyboardMoveKeys.right;
+    } else if (touchHasMove) {
+        keys.left = touchMoveKeys.left;
+        keys.right = touchMoveKeys.right;
+    } else if (gamepadHasMove) {
+        keys.left = gamepadMoveKeys.left;
+        keys.right = gamepadMoveKeys.right;
+    } else {
+        keys.left = false;
+        keys.right = false;
+    }
+}
+
+function setKeyboardMove(left, right) {
+    keyboardMoveKeys.left = left;
+    keyboardMoveKeys.right = right;
+    syncHorizontalInput();
+}
+
+function setTouchMove(left, right) {
+    touchMoveKeys.left = left;
+    touchMoveKeys.right = right;
+    syncHorizontalInput();
+}
+
+function setGamepadMove(left, right) {
+    gamepadMoveKeys.left = left;
+    gamepadMoveKeys.right = right;
+    syncHorizontalInput();
+}
+
+function resetHorizontalInput() {
+    keyboardMoveKeys.left = false;
+    keyboardMoveKeys.right = false;
+    touchMoveKeys.left = false;
+    touchMoveKeys.right = false;
+    gamepadMoveKeys.left = false;
+    gamepadMoveKeys.right = false;
+    syncHorizontalInput();
+}
 
 let pauseStartTime = 0; // Track when pause began
 let joystickPointerId = null;
@@ -65,10 +128,10 @@ function handleKeyDown(e) {
 
     switch (e.code) {
         case 'ArrowLeft': case 'KeyA': 
-            keys.left = true; 
+            setKeyboardMove(true, keyboardMoveKeys.right);
             break; 
         case 'ArrowRight': case 'KeyD': 
-            keys.right = true; 
+            setKeyboardMove(keyboardMoveKeys.left, true);
             break;
         case 'ArrowUp': case 'KeyW': case 'Space':
             if (!keys.up) {
@@ -85,8 +148,8 @@ function handleKeyDown(e) {
 function handleKeyUp(e) {
     if (state.getIsGameOver()) return;
      switch (e.code) {
-        case 'ArrowLeft': case 'KeyA': keys.left = false; break;
-        case 'ArrowRight': case 'KeyD': keys.right = false; break;
+        case 'ArrowLeft': case 'KeyA': setKeyboardMove(false, keyboardMoveKeys.right); break;
+        case 'ArrowRight': case 'KeyD': setKeyboardMove(keyboardMoveKeys.left, false); break;
         case 'ArrowUp': case 'KeyW': case 'Space': keys.up = false; break;
     }
 }
@@ -125,14 +188,12 @@ function updateJoystickFromPointer(event, stick, knob) {
     const normalizedX = dx / maxDistance;
 
     knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-    keys.left = normalizedX < -0.28;
-    keys.right = normalizedX > 0.28;
+    setTouchMove(normalizedX < -0.28, normalizedX > 0.28);
 }
 
 function resetJoystick(knob) {
     joystickPointerId = null;
-    keys.left = false;
-    keys.right = false;
+    setTouchMove(false, false);
     if (knob) knob.style.transform = 'translate(-50%, -50%)';
 }
 
@@ -177,8 +238,7 @@ function setupTouchControls() {
         event.preventDefault();
         stick.releasePointerCapture?.(event.pointerId);
         joystickPointerId = null;
-        keys.left = false;
-        keys.right = false;
+        setTouchMove(false, false);
         knob.style.transform = 'translate(-50%, -50%)';
     };
 
@@ -219,8 +279,7 @@ function setupTouchControls() {
         if (state.getCurrentGameState() !== state.GameState.Playing) return;
         event.preventDefault();
         unlockAudioFromTouch();
-        keys.left = false;
-        keys.right = false;
+        resetHorizontalInput();
         keys.up = false;
         togglePause();
     });
@@ -300,6 +359,7 @@ function handleGamepadDisconnected(event) {
     if (activeGamepadInfo?.index === event.gamepad?.index) {
         activeGamepadInfo = null;
     }
+    setGamepadMove(false, false);
     if (lastAnnouncedGamepadKey === getGamepadKey(event.gamepad)) {
         lastAnnouncedGamepadKey = '';
     }
@@ -325,6 +385,7 @@ export function handleGamepadInput() {
         wasStartPressed = false;
         wasJumpPressed = false;
         activeGamepadInfo = null;
+        setGamepadMove(false, false);
         return;
     }
 
@@ -537,17 +598,13 @@ export function handleGamepadInput() {
         let dpadRight = gp.buttons[15] && gp.buttons[15].pressed;
 
         if (dpadLeft) {
-            keys.left = true;
-            keys.right = false;
+            setGamepadMove(true, false);
         } else if (dpadRight) {
-            keys.left = false;
-            keys.right = true;
+            setGamepadMove(false, true);
         } else if (Math.abs(axisX) > AXIS_DEADZONE) {
-            keys.left = axisX < -AXIS_DEADZONE;
-            keys.right = axisX > AXIS_DEADZONE;
+            setGamepadMove(axisX < -AXIS_DEADZONE, axisX > AXIS_DEADZONE);
         } else {
-            keys.left = false;
-            keys.right = false;
+            setGamepadMove(false, false);
         }
 
         // Jump (Button 0: A / Cross)
