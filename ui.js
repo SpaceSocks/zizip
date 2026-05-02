@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-86';
-import * as audio from './audio.js?v=mobile-portrait-86'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-87';
+import * as audio from './audio.js?v=mobile-portrait-87'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-86';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-87';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-86';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-87';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -135,6 +135,16 @@ let localPlayReady = false;
 
 function clearLegacySavedPassword() {
     localStorage.removeItem(LEGACY_SAVED_PASSWORD_KEY);
+    localStorage.removeItem(LAST_EMAIL_KEY);
+}
+
+function clearEmailLoginFields() {
+    if (emailInput) emailInput.value = '';
+    if (passwordInput) passwordInput.value = '';
+    if (rememberPasswordCheckbox) rememberPasswordCheckbox.checked = false;
+    sessionPasswordEmail = '';
+    sessionPasswordCache = '';
+    localStorage.removeItem(LAST_EMAIL_KEY);
 }
 
 async function offerBrowserPasswordSave(email, password, displayName = '') {
@@ -791,11 +801,7 @@ async function prepareOnlinePlayerForUser(user, successMessage = '') {
     state.setPlayerInfo(user.uid, gameAlias);
     state.setActiveLeaderboardSource('global');
     setLocalPlayReady(false);
-    if (user.email) {
-        localStorage.setItem(LAST_EMAIL_KEY, user.email);
-        emailInput.value = user.email;
-        rememberPasswordCheckbox.checked = true;
-    }
+    clearEmailLoginFields();
     clearLegacySavedPassword();
     infoText.textContent = successMessage || `Signed in as ${gameAlias}. Press Play Online when ready.`;
     setOnlinePlayReady(true, gameAlias);
@@ -982,14 +988,7 @@ export function showLoginScreen() {
     if (canvasEl) canvasEl.style.display = 'none';
     // Reset form for display
     if (localAliasInput) localAliasInput.value = localStorage.getItem(LOCAL_ALIAS_KEY) || '';
-    const savedEmail = localStorage.getItem(LAST_EMAIL_KEY) || '';
-    emailInput.value = savedEmail;
-    if (sessionPasswordCache && sessionPasswordEmail === savedEmail) {
-        passwordInput.value = sessionPasswordCache;
-    } else if (!sessionPasswordCache) {
-        passwordInput.value = '';
-    }
-    rememberPasswordCheckbox.checked = !!savedEmail;
+    clearEmailLoginFields();
     hideGoogleAliasPrompt();
     setOnlinePlayReady(state.getActiveLeaderboardSource() === 'global' && !!state.getUserId() && state.getUserId() !== 'local-player', state.getDisplayName());
     setLocalPlayReady(localPlayReady && state.isLocalPlayer(), state.getDisplayName());
@@ -1095,18 +1094,20 @@ function setAuthMode(register) {
     isRegisterMode = register;
     if (isRegisterMode) {
         authButton.textContent = 'Register';
-        if (passwordInput) passwordInput.autocomplete = 'new-password';
+        if (emailInput) emailInput.autocomplete = 'off';
+        if (passwordInput) passwordInput.autocomplete = 'off';
         toggleAuthLink.textContent = 'Already have an account? Login';
         if (aliasGroup) aliasGroup.style.display = 'flex'; else console.error('aliasGroup not found!'); // Check element exists
         if (resetPasswordLink) resetPasswordLink.style.display = 'none'; else console.error('resetPasswordLink not found!');
         if (rememberGroup) rememberGroup.style.display = 'none'; // Hide remember on register
     } else {
         authButton.textContent = 'Login';
-        if (passwordInput) passwordInput.autocomplete = 'current-password';
+        if (emailInput) emailInput.autocomplete = 'off';
+        if (passwordInput) passwordInput.autocomplete = 'off';
         toggleAuthLink.textContent = 'Need to Register?';
         if (aliasGroup) aliasGroup.style.display = 'none'; else console.error('aliasGroup not found!'); // Check element exists
         if (resetPasswordLink) resetPasswordLink.style.display = 'block'; else console.error('resetPasswordLink not found!');
-        if (rememberGroup) rememberGroup.style.display = 'flex'; // Show remember on login
+        if (rememberGroup) rememberGroup.style.display = 'none';
     }
     infoText.textContent = ''; // Clear previous messages
     console.log(`setAuthMode finished. Alias group display: ${aliasGroup ? aliasGroup.style.display : 'Not Found'}`); // LOG
@@ -1159,9 +1160,6 @@ async function handleAuthClick() {
             state.setPlayerInfo(userCredential.user.uid, alias);
             state.setActiveLeaderboardSource('global');
             setLocalPlayReady(false);
-            localStorage.setItem(LAST_EMAIL_KEY, email);
-            sessionPasswordEmail = email;
-            sessionPasswordCache = password;
             await offerBrowserPasswordSave(email, password, alias);
             clearLegacySavedPassword();
             infoText.textContent = 'Registration successful! Press Play Online when ready.';
@@ -1173,15 +1171,6 @@ async function handleAuthClick() {
             state.setPlayerInfo(userCredential.user.uid, gameAlias);
             state.setActiveLeaderboardSource('global');
             setLocalPlayReady(false);
-            if (rememberPasswordCheckbox.checked) {
-                localStorage.setItem(LAST_EMAIL_KEY, email);
-                sessionPasswordEmail = email;
-                sessionPasswordCache = password;
-            } else {
-                localStorage.removeItem(LAST_EMAIL_KEY);
-                sessionPasswordEmail = '';
-                sessionPasswordCache = '';
-            }
             await offerBrowserPasswordSave(email, password, userCredential.user.displayName || email);
             clearLegacySavedPassword();
             infoText.textContent = 'Login successful! Press Play Online when ready.';
