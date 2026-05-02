@@ -444,7 +444,8 @@ body.game-screen-active {
     background: #ffe28a;
 }
 
-.google-signin-button {
+.google-signin-button,
+.apple-signin-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -452,8 +453,16 @@ body.game-screen-active {
     width: 100%;
     margin-top: 12px;
     border: 1px solid rgba(199, 220, 208, 0.38) !important;
+}
+
+.google-signin-button {
     background: #ffffff !important;
     color: #2e222f !important;
+}
+
+.apple-signin-button {
+    background: #111318 !important;
+    color: #ffffff !important;
 }
 
 .google-alias-panel {
@@ -494,6 +503,17 @@ body.game-screen-active {
     font: 700 15px Arial, sans-serif;
 }
 
+.apple-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #ffffff;
+    color: #111318;
+    font: 700 15px Arial, sans-serif;
+}
+
 .menu-actions {
     display: flex;
     justify-content: center;
@@ -505,6 +525,16 @@ body.game-screen-active {
 #loginScreen button:hover:not(:disabled) {
     background-color: #ffffff; /* White hover */
     transform: scale(1.02); /* Slight grow */
+}
+
+#loginScreen .google-signin-button:hover:not(:disabled) {
+    background: #ffffff !important;
+    color: #2e222f !important;
+}
+
+#loginScreen .apple-signin-button:hover:not(:disabled) {
+    background: #1b1f2a !important;
+    color: #ffffff !important;
 }
 
 #loginScreen button:active:not(:disabled) {

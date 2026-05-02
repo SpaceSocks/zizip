@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-60';
-import * as audio from './audio.js?v=mobile-portrait-60'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-61';
+import * as audio from './audio.js?v=mobile-portrait-61'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-60';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-61';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-60';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-61';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -17,6 +17,7 @@ const aliasInput = document.getElementById('aliasInput'); // Was playerNameInput
 const aliasGroup = document.querySelector('.input-group.register-only');
 const authButton = document.getElementById('authButton'); // Was startButton
 const googleSignInButton = document.getElementById('googleSignInButton');
+const appleSignInButton = document.getElementById('appleSignInButton');
 const googleAliasPanel = document.getElementById('googleAliasPanel');
 const googleAliasInput = document.getElementById('googleAliasInput');
 const googleAliasSaveButton = document.getElementById('googleAliasSaveButton');
@@ -476,9 +477,14 @@ function isValidAlias(alias) {
     return alias.length >= 1 && alias.length <= 15;
 }
 
-function isGoogleAuthUser(user) {
+function requiresManualAlias(user) {
     return Array.isArray(user?.providerData) &&
-        user.providerData.some(provider => provider?.providerId === 'google.com');
+        user.providerData.some(provider => ['google.com', 'apple.com'].includes(provider?.providerId));
+}
+
+function setProviderSignInButtonsDisabled(disabled) {
+    if (googleSignInButton) googleSignInButton.disabled = disabled;
+    if (appleSignInButton) appleSignInButton.disabled = disabled;
 }
 
 async function loadSavedGameAlias(user) {
@@ -533,7 +539,7 @@ async function resolveGameAliasForUser(user, preferredAlias = '') {
         return saveGameAlias(user, preferred);
     }
 
-    if (!isGoogleAuthUser(user)) {
+    if (!requiresManualAlias(user)) {
         const fallback = cleanAlias(user?.displayName || (user?.email ? user.email.split('@')[0] : ''));
         if (isValidAlias(fallback)) {
             return saveGameAlias(user, fallback);
@@ -552,7 +558,7 @@ function showGoogleAliasPrompt(user) {
         googleAliasInput.value = '';
         googleAliasInput.focus();
     }
-    infoText.textContent = 'Choose a Cosmic Zip alias before your first Google run.';
+    infoText.textContent = 'Choose a Cosmic Zip alias before your first online run.';
 }
 
 function hideGoogleAliasPrompt() {
@@ -568,6 +574,10 @@ function shouldUseGoogleRedirect() {
     return isMobileViewport || isTouch || isEmbeddedBrowser;
 }
 
+function shouldUseProviderRedirect() {
+    return shouldUseGoogleRedirect();
+}
+
 async function startOnlineGameForUser(user, successMessage) {
     let gameAlias;
     try {
@@ -575,7 +585,7 @@ async function startOnlineGameForUser(user, successMessage) {
     } catch (error) {
         if (error?.code === 'alias-required') {
             authButton.disabled = false;
-            if (googleSignInButton) googleSignInButton.disabled = false;
+            setProviderSignInButtonsDisabled(false);
             showGoogleAliasPrompt(user);
             return false;
         }
@@ -600,7 +610,7 @@ async function startOnlineGameForUser(user, successMessage) {
         startGameLogic();
         state.setCurrentGameState(state.GameState.Playing);
         authButton.disabled = false;
-        if (googleSignInButton) googleSignInButton.disabled = false;
+        setProviderSignInButtonsDisabled(false);
     }, 1000);
     return true;
 }
@@ -617,6 +627,16 @@ function buildGoogleProvider(GoogleAuthProvider) {
             login_hint: email
         });
     }
+    return provider;
+}
+
+function buildAppleProvider(OAuthProvider) {
+    const provider = new OAuthProvider('apple.com');
+    provider.addScope('email');
+    provider.addScope('name');
+    provider.setCustomParameters({
+        locale: 'en'
+    });
     return provider;
 }
 
@@ -905,7 +925,7 @@ async function handleAuthClick() {
     }
 
     authButton.disabled = true;
-    if (googleSignInButton) googleSignInButton.disabled = true;
+    setProviderSignInButtonsDisabled(true);
     requestMobileFullscreen();
     infoText.textContent = isRegisterMode ? 'Registering...' : 'Logging in...';
 
@@ -964,43 +984,45 @@ async function handleAuthClick() {
             startGameLogic();
             state.setCurrentGameState(state.GameState.Playing);
             authButton.disabled = false; // Re-enable button for next time
-            if (googleSignInButton) googleSignInButton.disabled = false;
+            setProviderSignInButtonsDisabled(false);
         }, 1000);
 
     } catch (error) {
         console.error("Authentication error:", error);
         infoText.textContent = getFirebaseAuthErrorMessage(error) || 'Online login unavailable. Use Play Local to start now.';
         authButton.disabled = false;
-        if (googleSignInButton) googleSignInButton.disabled = false;
+        setProviderSignInButtonsDisabled(false);
     }
 }
 
-async function handleGoogleSignInClick() {
+async function startProviderSignIn(providerLabel, providerId, providerFactory) {
     hideGoogleAliasPrompt();
-    if (googleSignInButton) googleSignInButton.disabled = true;
+    setProviderSignInButtonsDisabled(true);
     authButton.disabled = true;
     requestMobileFullscreen();
-    infoText.textContent = 'Opening Google sign-in...';
+    infoText.textContent = `Opening ${providerLabel} sign-in...`;
 
     try {
         const {
             auth,
             GoogleAuthProvider,
+            OAuthProvider,
             signInWithPopup,
             signInWithRedirect
         } = await getAuthApi();
-        const provider = buildGoogleProvider(GoogleAuthProvider);
+        const provider = providerFactory({ GoogleAuthProvider, OAuthProvider });
 
-        if (shouldUseGoogleRedirect()) {
-            sessionStorage.setItem('zipzip_googleRedirectPending', '1');
+        if (shouldUseProviderRedirect()) {
+            sessionStorage.setItem('zipzip_providerRedirectPending', providerId);
             await signInWithRedirect(auth, provider);
             return;
         }
 
         const userCredential = await signInWithPopup(auth, provider);
-        await startOnlineGameForUser(userCredential.user, 'Google sign-in successful! Starting game...');
+        await startOnlineGameForUser(userCredential.user, `${providerLabel} sign-in successful! Starting game...`);
     } catch (error) {
-        console.error("Google sign-in error:", error);
+        console.error(`${providerLabel} sign-in error:`, error);
+        sessionStorage.removeItem('zipzip_providerRedirectPending');
         const canTryRedirect = error?.code === 'auth/popup-blocked' ||
             error?.code === 'auth/popup-closed-by-user' ||
             error?.code === 'auth/cancelled-popup-request' ||
@@ -1008,26 +1030,43 @@ async function handleGoogleSignInClick() {
 
         if (canTryRedirect) {
             try {
-                const { auth, GoogleAuthProvider, signInWithRedirect } = await getAuthApi();
-                sessionStorage.setItem('zipzip_googleRedirectPending', '1');
-                await signInWithRedirect(auth, buildGoogleProvider(GoogleAuthProvider));
+                const { auth, GoogleAuthProvider, OAuthProvider, signInWithRedirect } = await getAuthApi();
+                sessionStorage.setItem('zipzip_providerRedirectPending', providerId);
+                await signInWithRedirect(auth, providerFactory({ GoogleAuthProvider, OAuthProvider }));
                 return;
             } catch (redirectError) {
-                console.error("Google redirect sign-in error:", redirectError);
-                infoText.textContent = getFirebaseAuthErrorMessage(redirectError) || 'Google sign-in could not start.';
+                console.error(`${providerLabel} redirect sign-in error:`, redirectError);
+                sessionStorage.removeItem('zipzip_providerRedirectPending');
+                infoText.textContent = getFirebaseAuthErrorMessage(redirectError) || `${providerLabel} sign-in could not start.`;
             }
         } else {
-            infoText.textContent = getFirebaseAuthErrorMessage(error) || 'Google sign-in failed. Check that Google is enabled in Firebase.';
+            infoText.textContent = getFirebaseAuthErrorMessage(error) || `${providerLabel} sign-in failed. Check that ${providerLabel} is enabled in Firebase.`;
         }
 
         authButton.disabled = false;
-        if (googleSignInButton) googleSignInButton.disabled = false;
+        setProviderSignInButtonsDisabled(false);
     }
+}
+
+async function handleGoogleSignInClick() {
+    await startProviderSignIn(
+        'Google',
+        'google',
+        ({ GoogleAuthProvider }) => buildGoogleProvider(GoogleAuthProvider)
+    );
+}
+
+async function handleAppleSignInClick() {
+    await startProviderSignIn(
+        'Apple',
+        'apple',
+        ({ OAuthProvider }) => buildAppleProvider(OAuthProvider)
+    );
 }
 
 async function handleGoogleAliasSaveClick() {
     if (!pendingGoogleAliasUser) {
-        infoText.textContent = 'Start Google sign-in first, then choose your alias.';
+        infoText.textContent = 'Start online sign-in first, then choose your alias.';
         return;
     }
 
@@ -1039,7 +1078,7 @@ async function handleGoogleAliasSaveClick() {
     }
 
     if (googleAliasSaveButton) googleAliasSaveButton.disabled = true;
-    if (googleSignInButton) googleSignInButton.disabled = true;
+    setProviderSignInButtonsDisabled(true);
     authButton.disabled = true;
     infoText.textContent = 'Saving alias...';
 
@@ -1047,10 +1086,10 @@ async function handleGoogleAliasSaveClick() {
         await saveGameAlias(pendingGoogleAliasUser, alias);
         await startOnlineGameForUser(pendingGoogleAliasUser, 'Alias saved! Starting game...');
     } catch (error) {
-        console.error("Google alias save error:", error);
+        console.error("Online alias save error:", error);
         infoText.textContent = error?.message || 'Could not save alias. Try again.';
         authButton.disabled = false;
-        if (googleSignInButton) googleSignInButton.disabled = false;
+        setProviderSignInButtonsDisabled(false);
     } finally {
         if (googleAliasSaveButton) googleAliasSaveButton.disabled = false;
     }
@@ -1076,11 +1115,11 @@ function getFirebaseAuthErrorMessage(error) {
         case 'auth/weak-password':
             return 'Password is too weak (must be 6+ characters).';
         case 'auth/operation-not-allowed':
-            return 'Email/password accounts are not enabled.'; // Check Firebase console
+            return 'That sign-in method is not enabled in Firebase yet.';
         case 'auth/popup-blocked':
             return 'Popup was blocked. Try again or use your browser directly.';
         case 'auth/popup-closed-by-user':
-            return 'Google sign-in was closed before it finished.';
+            return 'Sign-in was closed before it finished.';
         case 'auth/unauthorized-domain':
             return 'This domain is not authorized in Firebase Authentication.';
         case 'auth/account-exists-with-different-credential':
@@ -1359,13 +1398,13 @@ async function initializeAuthStateListener() {
                 console.log("No user signed in.");
             }
             authButton.disabled = false;
-            if (googleSignInButton) googleSignInButton.disabled = false;
+            setProviderSignInButtonsDisabled(false);
             quitButton.disabled = false;
         });
     } catch (error) {
         console.warn("Online auth unavailable; local play remains available.", error);
         authButton.disabled = false;
-        if (googleSignInButton) googleSignInButton.disabled = false;
+        setProviderSignInButtonsDisabled(false);
         quitButton.disabled = false;
         if (state.getCurrentGameState() === state.GameState.MainMenu) {
             infoText.textContent = 'Online login unavailable. Play Local works offline.';
@@ -1377,29 +1416,33 @@ async function handleGoogleRedirectResult() {
     if (redirectResultHandled) return;
     redirectResultHandled = true;
 
-    const wasPending = sessionStorage.getItem('zipzip_googleRedirectPending') === '1';
-    if (!wasPending) return;
+    const pendingProvider = sessionStorage.getItem('zipzip_providerRedirectPending') ||
+        (sessionStorage.getItem('zipzip_googleRedirectPending') === '1' ? 'google' : '');
+    if (!pendingProvider) return;
+    const providerLabel = pendingProvider === 'apple' ? 'Apple' : 'Google';
 
     try {
         const { auth, getRedirectResult } = await getAuthApi();
-        infoText.textContent = 'Finishing Google sign-in...';
+        infoText.textContent = `Finishing ${providerLabel} sign-in...`;
         const result = await getRedirectResult(auth);
+        sessionStorage.removeItem('zipzip_providerRedirectPending');
         sessionStorage.removeItem('zipzip_googleRedirectPending');
 
         if (result?.user) {
-            if (googleSignInButton) googleSignInButton.disabled = true;
+            setProviderSignInButtonsDisabled(true);
             authButton.disabled = true;
-            await startOnlineGameForUser(result.user, 'Google sign-in successful! Starting game...');
+            await startOnlineGameForUser(result.user, `${providerLabel} sign-in successful! Starting game...`);
         } else {
             authButton.disabled = false;
-            if (googleSignInButton) googleSignInButton.disabled = false;
+            setProviderSignInButtonsDisabled(false);
         }
     } catch (error) {
-        console.error("Google redirect result error:", error);
+        console.error(`${providerLabel} redirect result error:`, error);
+        sessionStorage.removeItem('zipzip_providerRedirectPending');
         sessionStorage.removeItem('zipzip_googleRedirectPending');
-        infoText.textContent = getFirebaseAuthErrorMessage(error) || 'Google sign-in did not finish.';
+        infoText.textContent = getFirebaseAuthErrorMessage(error) || `${providerLabel} sign-in did not finish.`;
         authButton.disabled = false;
-        if (googleSignInButton) googleSignInButton.disabled = false;
+        setProviderSignInButtonsDisabled(false);
     }
 }
 
@@ -1435,6 +1478,7 @@ export function initializeUI() {
     if (!localAliasInput) console.error('localAliasInput not found during init!');
     if (!authButton) console.error('authButton not found during init!');
     if (!googleSignInButton) console.error('googleSignInButton not found during init!');
+    if (!appleSignInButton) console.error('appleSignInButton not found during init!');
     if (!googleAliasPanel) console.error('googleAliasPanel not found during init!');
     if (!googleAliasInput) console.error('googleAliasInput not found during init!');
     if (!googleAliasSaveButton) console.error('googleAliasSaveButton not found during init!');
@@ -1482,6 +1526,9 @@ export function initializeUI() {
     authButton.addEventListener('click', handleAuthClick);
     if (googleSignInButton) {
         googleSignInButton.addEventListener('click', handleGoogleSignInClick);
+    }
+    if (appleSignInButton) {
+        appleSignInButton.addEventListener('click', handleAppleSignInClick);
     }
     if (googleAliasSaveButton) {
         googleAliasSaveButton.addEventListener('click', handleGoogleAliasSaveClick);
@@ -1675,7 +1722,7 @@ export function initializeUI() {
 
     showLoginScreen();
     authButton.disabled = false;
-    if (googleSignInButton) googleSignInButton.disabled = false;
+    setProviderSignInButtonsDisabled(false);
     quitButton.disabled = false;
     initializeAuthStateListener();
     handleGoogleRedirectResult();
