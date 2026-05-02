@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-87';
-import * as graphics from './graphics.js?v=mobile-portrait-87';
-import * as input from './input.js?v=mobile-portrait-87';
-import * as audio from './audio.js?v=mobile-portrait-87';
-import { player, createPlatform } from './entities.js?v=mobile-portrait-87';
-import * as ui from './ui.js?v=mobile-portrait-87'; // Import UI
+import * as state from './state.js?v=mobile-portrait-88';
+import * as graphics from './graphics.js?v=mobile-portrait-88';
+import * as input from './input.js?v=mobile-portrait-88';
+import * as audio from './audio.js?v=mobile-portrait-88';
+import { player, createPlatform } from './entities.js?v=mobile-portrait-88';
+import * as ui from './ui.js?v=mobile-portrait-88'; // Import UI
 import {
     MIN_VERT_GAP, MAX_VERT_GAP, PLATFORM_START_WIDTH, PLATFORM_EARLY_MIN_WIDTH, PLATFORM_MIN_WIDTH,
     PLATFORM_WIDTH_DIFFICULTY_HEIGHT, PLAYER_GRAVITY, PLAYER_JUMP_POWER, PLAYER_SPEED,
@@ -11,7 +11,7 @@ import {
     PLATFORM_PROBABILITY, PLATFORM_MIDDLE_THRESHOLD,
     PLATFORM_FLASH_DURATION, PLATFORM_FLASH_INTERVAL_MAX, PLATFORM_FLASH_INTERVAL_MIN,
     PLATFORM_FLASH_START_DELAY, PLAYER_AIR_CONTROL_FACTOR
-} from './constants.js?v=mobile-portrait-87';
+} from './constants.js?v=mobile-portrait-88';
 
 // --- Game Variables ---
 let animationFrameId = null;
@@ -238,7 +238,7 @@ function getPlatformWidthForDifficulty(difficulty) {
     const eased = difficulty * difficulty * (3 - 2 * difficulty);
     const smallestAllowed = Math.round(PLATFORM_EARLY_MIN_WIDTH - (PLATFORM_EARLY_MIN_WIDTH - PLATFORM_MIN_WIDTH) * eased);
     const widestAllowed = Math.round(PLATFORM_START_WIDTH - 22 * eased);
-    const bias = Math.pow(Math.random(), 1.4 + (1 - difficulty) * 1.8);
+    const bias = Math.pow(state.runRandom(), 1.4 + (1 - difficulty) * 1.8);
     return Math.round(smallestAllowed + (widestAllowed - smallestAllowed) * bias);
 }
 
@@ -246,7 +246,7 @@ function getMovingPlatformSpeedForDifficulty(difficulty) {
     const eased = difficulty * difficulty * (3 - 2 * difficulty);
     const minSpeed = 52 + eased * 26;
     const maxSpeed = 76 + eased * 66;
-    const speed = minSpeed + Math.random() * (maxSpeed - minSpeed);
+    const speed = minSpeed + state.runRandom() * (maxSpeed - minSpeed);
     return Math.round(speed);
 }
 
@@ -270,7 +270,7 @@ function getPlayerSpeed() {
 
 function getVerticalPlatformGap() {
     const scale = isMobilePlayfield() ? getMobilePhysicsScale() : 1;
-    return (MIN_VERT_GAP + Math.random() * (MAX_VERT_GAP - MIN_VERT_GAP)) * scale;
+    return (MIN_VERT_GAP + state.runRandom() * (MAX_VERT_GAP - MIN_VERT_GAP)) * scale;
 }
 
 function getReachableEdgeGap(yOffset, difficulty) {
@@ -751,7 +751,7 @@ function spawnNewPlatform(basePlatform) {
 
     // Determine type based on probabilities
     let platformType = 'normal';
-    const rand = Math.random();
+    const rand = state.runRandom();
     let cumulativeProb = 0;
 
     if (rand < (cumulativeProb += PLATFORM_PROBABILITY.NORMAL)) {
@@ -789,7 +789,7 @@ function spawnNewPlatform(basePlatform) {
         needsRetry = false; // Assume no overlap for this attempt
 
         if (spawnMaxX > spawnMinX) {
-            newX = spawnMinX + Math.random() * (spawnMaxX - spawnMinX);
+            newX = spawnMinX + state.runRandom() * (spawnMaxX - spawnMinX);
         } else {
             newX = clamp(basePlatform.x + basePlatform.width / 2 - newWidth / 2, minX, maxX);
         }
@@ -837,7 +837,11 @@ function spawnNewPlatform(basePlatform) {
 
     // Create the platform with the validated/final newX
     const platformOptions = platformType === 'moving'
-        ? { movingSpeed: getMovingPlatformSpeedForDifficulty(difficulty) }
+        ? {
+            movingSpeed: getMovingPlatformSpeedForDifficulty(difficulty),
+            movingAxis: state.runRandom() < 0.5 ? 'x' : 'y',
+            movingDirection: state.runRandom() < 0.5 ? 1 : -1
+        }
         : {};
     const newPlatform = createPlatform(newX, newY, platformType, newWidth, false, platformOptions); // Pass width too
     preparePlatformForReplay(newPlatform, (basePlatform.replayHeight || 0) + yOffset / 10);
@@ -1019,6 +1023,7 @@ export function startGame() {
     }
 
     ui.hideLoginScreen();
+    state.ensureRunSeedReady();
     state.resetGameStats();
     // INSTEAD of: player = new Player(...);
     // We just reset the state of the existing imported player object:

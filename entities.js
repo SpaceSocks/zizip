@@ -4,7 +4,7 @@
         PLATFORM_BASE_WIDTH, PLATFORM_HEIGHT, PLATFORM_MIDDLE_THRESHOLD,
         MOVING_PLATFORM_SPEED,
         PLATFORM_FLASH_INTERVAL_MAX
-    } from './constants.js?v=mobile-portrait-87';
+    } from './constants.js?v=mobile-portrait-88';
 
     // --- Player Definition ---
     export const player = {
@@ -54,8 +54,7 @@
             color = R64.MOVING_PLATFORM_ORANGE;
             middleColor = R64.MOVING_PLATFORM_MIDDLE_ORANGE;
             
-            // Randomly choose axis
-            const axis = Math.random() < 0.5 ? 'x' : 'y'; 
+            const axis = options.movingAxis === 'y' ? 'y' : 'x';
             const range = (axis === 'x') ? 150 : 80; // Different range for x vs y? Adjust as needed
             const speed = Number.isFinite(options.movingSpeed) ? options.movingSpeed : MOVING_PLATFORM_SPEED;
 
@@ -63,7 +62,7 @@
 
             movement = {
                 axis: axis, // <<< STORE AXIS
-                direction: Math.random() < 0.5 ? 1 : -1, 
+                direction: options.movingDirection === -1 ? -1 : 1,
                 speed: speed,
                 range: range
             };

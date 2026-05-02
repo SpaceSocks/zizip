@@ -21,6 +21,7 @@ service cloud.firestore {
             'score',
             'maxHeight',
             'time',
+            'seed',
             'duration',
             'canvasWidth',
             'canvasHeight',
@@ -44,6 +45,10 @@ service cloud.firestore {
           && request.resource.data.replay.time is string
           && request.resource.data.replay.time == request.resource.data.time
           && request.resource.data.replay.time.size() <= 24
+          && request.resource.data.replay.seed is string
+          && request.resource.data.replay.seed == request.resource.data.seed
+          && request.resource.data.replay.seed.size() > 0
+          && request.resource.data.replay.seed.size() <= 24
           && request.resource.data.replay.duration is number
           && request.resource.data.replay.duration >= 0
           && request.resource.data.replay.duration <= 3600000
@@ -70,6 +75,7 @@ service cloud.firestore {
           'score',
           'maxHeight',
           'time',
+          'seed',
           'replay',
           'timestamp',
           'updatedAt'
@@ -86,6 +92,9 @@ service cloud.firestore {
         && request.resource.data.maxHeight <= 100000
         && request.resource.data.time is string
         && request.resource.data.time.size() <= 24
+        && request.resource.data.seed is string
+        && request.resource.data.seed.size() > 0
+        && request.resource.data.seed.size() <= 24
         && request.resource.data.updatedAt == request.time
         && validReplayShape();
     }

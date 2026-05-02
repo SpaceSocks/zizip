@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-87';
-import * as audio from './audio.js?v=mobile-portrait-87'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-88';
+import * as audio from './audio.js?v=mobile-portrait-88'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-87';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-88';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-87';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-88';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -25,6 +25,8 @@ const onlinePlayButton = document.getElementById('onlinePlayButton');
 const quitButton = document.getElementById('quitButton');
 const localLoginButton = document.getElementById('localLoginButton');
 const localPlayButton = document.getElementById('localPlayButton');
+const seedInput = document.getElementById('seedInput');
+const randomSeedCheckbox = document.getElementById('randomSeedCheckbox');
 const infoText = document.getElementById('infoText');
 const toggleAuthLink = document.getElementById('toggleAuthLink');
 const resetPasswordLink = document.getElementById('resetPasswordLink'); // Add reference if needed later
@@ -93,6 +95,8 @@ const controllerToast = document.getElementById('controllerToast');
 const LAST_EMAIL_KEY = 'zipzip_lastEmail';
 const LEGACY_SAVED_PASSWORD_KEY = 'zipzip_savedPassword';
 const LOCAL_ALIAS_KEY = 'zipzip_localAlias';
+const RUN_SEED_KEY = 'zipzip_runSeed';
+const RANDOM_SEED_KEY = 'zipzip_randomSeed';
 const PLAYER_PROFILES_COLLECTION = 'profiles';
 const MOBILE_CONTROL_PREFS = {
     moveSize: 'zipzip_mobileMoveControlSize',
@@ -380,6 +384,26 @@ function makeLeaderboardCell(className, text) {
     return cell;
 }
 
+function makeLeaderboardNameCell(entry) {
+    const cell = document.createElement('div');
+    cell.className = 'name';
+
+    const name = document.createElement('span');
+    name.className = 'leaderboard-player-name';
+    name.textContent = (entry.displayName || 'Anon').toUpperCase();
+    cell.appendChild(name);
+
+    const seed = entry.seed || entry.replay?.seed || '';
+    if (seed) {
+        const seedLabel = document.createElement('span');
+        seedLabel.className = 'leaderboard-seed';
+        seedLabel.textContent = `SEED ${String(seed).toUpperCase()}`;
+        cell.appendChild(seedLabel);
+    }
+
+    return cell;
+}
+
 function renderLeaderboard(entries = [], targetList = menuLeaderboardList, replayReturnTarget = 'menu') {
     if (!targetList) return;
     targetList.replaceChildren();
@@ -418,7 +442,7 @@ function renderLeaderboard(entries = [], targetList = menuLeaderboardList, repla
 
         row.append(
             makeLeaderboardCell('number', entry.rank ? `${entry.rank}.` : `${index + 1}.`),
-            makeLeaderboardCell('name', (entry.displayName || 'Anon').toUpperCase()),
+            makeLeaderboardNameCell(entry),
             makeLeaderboardCell('metric score', String(entry.score ?? 0)),
             makeLeaderboardCell('metric height', `${Math.round(entry.maxHeight || 0)} M`),
             makeLeaderboardCell('time', entry.time || '00:00'),
@@ -636,6 +660,34 @@ function setLocalPlayReady(ready, label = '') {
     }
 }
 
+function syncSeedControls(save = false) {
+    const random = randomSeedCheckbox ? randomSeedCheckbox.checked : true;
+    const seedValue = seedInput ? seedInput.value.trim() : '';
+    if (seedInput) {
+        seedInput.disabled = random;
+        seedInput.placeholder = random ? 'Generated on play' : 'Map seed';
+    }
+    state.setRunSeedConfig(seedValue, random);
+    if (save) {
+        localStorage.setItem(RUN_SEED_KEY, seedValue);
+        localStorage.setItem(RANDOM_SEED_KEY, random ? 'true' : 'false');
+    }
+}
+
+function loadRunSeedPreferences() {
+    if (seedInput) seedInput.value = localStorage.getItem(RUN_SEED_KEY) || '';
+    if (randomSeedCheckbox) {
+        const savedRandom = localStorage.getItem(RANDOM_SEED_KEY);
+        randomSeedCheckbox.checked = savedRandom === null ? true : savedRandom !== 'false';
+    }
+    syncSeedControls(false);
+}
+
+function prepareRunSeedForMenuStart() {
+    syncSeedControls(true);
+    return state.prepareNextRunSeed();
+}
+
 async function loadSavedGameAlias(user) {
     if (!user?.uid) return '';
     try {
@@ -820,6 +872,7 @@ function startOnlineRun() {
 
     requestMobileFullscreen();
     audio.initializeAudio();
+    prepareRunSeedForMenuStart();
     infoText.textContent = 'Starting online game...';
     hideLoginScreen();
     startGameLogic();
@@ -988,6 +1041,7 @@ export function showLoginScreen() {
     if (canvasEl) canvasEl.style.display = 'none';
     // Reset form for display
     if (localAliasInput) localAliasInput.value = localStorage.getItem(LOCAL_ALIAS_KEY) || '';
+    loadRunSeedPreferences();
     clearEmailLoginFields();
     hideGoogleAliasPrompt();
     setOnlinePlayReady(state.getActiveLeaderboardSource() === 'global' && !!state.getUserId() && state.getUserId() !== 'local-player', state.getDisplayName());
@@ -1531,6 +1585,7 @@ function handleLocalPlayClick() {
     audio.initializeAudio();
     state.setActiveLeaderboardSource('local');
     ensureLocalPlayIdentity(localAliasInput?.value.trim() || state.getDisplayName() || 'Local Player');
+    prepareRunSeedForMenuStart();
     infoText.textContent = 'Starting local game...';
     hideLoginScreen();
     startGameLogic();
@@ -1801,6 +1856,8 @@ export function initializeUI() {
     if (!quitButton) console.error('quitButton not found during init!');
     if (!localLoginButton) console.error('localLoginButton not found during init!');
     if (!localPlayButton) console.error('localPlayButton not found during init!');
+    if (!seedInput) console.error('seedInput not found during init!');
+    if (!randomSeedCheckbox) console.error('randomSeedCheckbox not found during init!');
     if (!leaderboardButton) console.error('leaderboardButton not found!');
     if (!achievementsButton) console.error('achievementsButton not found!');
     if (!achievementsPanel) console.error('achievementsPanel not found!');
@@ -1863,6 +1920,8 @@ export function initializeUI() {
     if (localPlayButton) {
         localPlayButton.addEventListener('click', handleLocalPlayClick);
     }
+    seedInput?.addEventListener('input', () => syncSeedControls(true));
+    randomSeedCheckbox?.addEventListener('change', () => syncSeedControls(true));
     if (leaderboardButton) {
         leaderboardButton.addEventListener('click', () => showLeaderboardPanel(true, 'local'));
     }

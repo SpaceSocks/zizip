@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-87';
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-87';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-88';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-88';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({
@@ -29,6 +29,13 @@ let lives = 3; // Start with 3 lives
 let userId = null;
 let displayName = null;
 let activeLeaderboardSource = 'local';
+let seedConfig = {
+    seed: '',
+    random: true
+};
+let currentRunSeed = '';
+let currentRunRandom = true;
+let seededRandomFn = null;
 
 // NEW: Store last submitted score details for highlighting
 let lastSubmittedScore = null;
@@ -64,6 +71,7 @@ const MAX_STORED_REPLAY_EVENTS = 500;
 const MAX_REPLAY_READ_SAMPLES = 9000;
 const MAX_REPLAY_READ_PLATFORMS = 1500;
 const MAX_REPLAY_READ_EVENTS = 750;
+const MAX_RUN_SEED_LENGTH = 24;
 let bestRunReplay = null;
 let bestRunReplayOwnerId = null;
 let currentRunReplay = null;
@@ -170,6 +178,82 @@ function sanitizeStorageKeyPart(value) {
         .replace(/[^a-z0-9_-]+/g, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 96);
+}
+
+function sanitizeRunSeed(value) {
+    return String(value || '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/[^A-Za-z0-9_-]+/g, '')
+        .slice(0, MAX_RUN_SEED_LENGTH);
+}
+
+function generateRandomRunSeed() {
+    if (globalThis.crypto?.getRandomValues) {
+        const bytes = new Uint32Array(2);
+        globalThis.crypto.getRandomValues(bytes);
+        return `${bytes[0].toString(36)}${bytes[1].toString(36)}`.toUpperCase().slice(0, 12);
+    }
+
+    return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`.toUpperCase().slice(0, 12);
+}
+
+function hashRunSeed(seed) {
+    let hash = 2166136261;
+    const text = String(seed || 'COSMIC-ZIP');
+    for (let index = 0; index < text.length; index++) {
+        hash ^= text.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+}
+
+function createSeededRandom(seed) {
+    let value = hashRunSeed(seed) || 0x9E3779B9;
+    return function seededRandom() {
+        value += 0x6D2B79F5;
+        let result = value;
+        result = Math.imul(result ^ (result >>> 15), result | 1);
+        result ^= result + Math.imul(result ^ (result >>> 7), result | 61);
+        return ((result ^ (result >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+export function setRunSeedConfig(seed, random = true) {
+    seedConfig = {
+        seed: sanitizeRunSeed(seed),
+        random: random !== false
+    };
+    return { ...seedConfig };
+}
+
+export function getRunSeedConfig() {
+    return { ...seedConfig };
+}
+
+export function prepareNextRunSeed() {
+    currentRunRandom = seedConfig.random;
+    currentRunSeed = currentRunRandom
+        ? generateRandomRunSeed()
+        : (seedConfig.seed || generateRandomRunSeed());
+    seededRandomFn = createSeededRandom(currentRunSeed);
+    return currentRunSeed;
+}
+
+export function ensureRunSeedReady() {
+    if (!currentRunSeed || !seededRandomFn) {
+        return prepareNextRunSeed();
+    }
+    return currentRunSeed;
+}
+
+export function getCurrentRunSeed() {
+    return currentRunSeed || seedConfig.seed || '';
+}
+
+export function runRandom() {
+    if (!seededRandomFn) ensureRunSeedReady();
+    return seededRandomFn();
 }
 
 function getAchievementOwnerId() {
@@ -564,6 +648,7 @@ export function resetGameStats() {
 export function beginRunReplay() {
     currentRunReplay = {
         version: 5,
+        seed: getCurrentRunSeed(),
         savedAt: 0,
         score: 0,
         maxHeight: 0,
@@ -583,6 +668,7 @@ export function beginRunReplay() {
 
 export function setRunReplayMeta(meta = {}) {
     if (!currentRunReplay) beginRunReplay();
+    currentRunReplay.seed = sanitizeRunSeed(meta.seed || currentRunReplay.seed || getCurrentRunSeed());
     currentRunReplay.canvasWidth = meta.canvasWidth || currentRunReplay.canvasWidth || 0;
     currentRunReplay.canvasHeight = meta.canvasHeight || currentRunReplay.canvasHeight || 0;
     if (typeof meta.isMobileRun === 'boolean') currentRunReplay.isMobileRun = meta.isMobileRun;
@@ -663,6 +749,7 @@ export function buildCurrentRunReplay(finalScore, finalHeight, finalTime) {
         : 0;
     return {
         ...currentRunReplay,
+        seed: sanitizeRunSeed(currentRunReplay.seed || getCurrentRunSeed()),
         savedAt: Date.now(),
         score: finalScore,
         maxHeight: Math.round(finalHeight * 10) / 10,
@@ -979,6 +1066,7 @@ function compactReplayForStorage(replay) {
 
     return {
         version: 5,
+        seed: sanitizeRunSeed(replay.seed || getCurrentRunSeed()),
         savedAt: finiteReplayInteger(replay.savedAt, Date.now(), 0, Number.MAX_SAFE_INTEGER),
         score: finiteReplayInteger(replay.score, 0, 0, 10000000),
         maxHeight: Math.round(finiteReplayNumber(replay.maxHeight, 0, 0, 100000) * 10) / 10,
@@ -1395,6 +1483,7 @@ async function submitGlobalLeaderboardViaRest(idToken, leaderboardUserId, entryD
         score: entryData.score,
         maxHeight: entryData.maxHeight,
         time: entryData.time,
+        seed: entryData.seed,
         replay: entryData.replay
     };
     const write = {
@@ -1514,6 +1603,7 @@ async function upsertGlobalLeaderboardEntrySdk(firestoreApi, playerName, leaderb
         score: entryData.score,
         maxHeight: entryData.maxHeight,
         time: entryData.time,
+        seed: entryData.seed,
         replay: entryData.replay,
         updatedAt: serverTimestamp()
     };
@@ -1736,7 +1826,9 @@ function hydrateLeaderboardReplaysFromLocal(entries) {
             Math.abs(Number(localEntry.maxHeight || 0) - Number(entry.maxHeight || 0)) < 1
         ) || matchingLocalReplays[0];
 
-        return localReplayEntry ? { ...entry, replay: localReplayEntry.replay } : entry;
+        return localReplayEntry
+            ? { ...entry, seed: entry.seed || localReplayEntry.seed || localReplayEntry.replay?.seed || '', replay: localReplayEntry.replay }
+            : entry;
     });
 }
 
@@ -1772,13 +1864,14 @@ async function getGlobalLeaderboardRankSdk(firestoreApi, leaderboardRef, entry) 
 
 function addLocalLeaderboardEntry(playerName, score, maxHeight, time, replay = null) {
     const leaderboardUserId = getLocalLeaderboardUserId(playerName);
+    const seed = sanitizeRunSeed(replay?.seed || getCurrentRunSeed());
     const existingEntries = getLocalLeaderboard();
     const existingForUser = existingEntries.find(entry => entry.userId === leaderboardUserId);
     const isBetter = !existingForUser || score > (existingForUser.score || 0) ||
         (score === (existingForUser.score || 0) && maxHeight > (existingForUser.maxHeight || 0)) ||
         (score === (existingForUser.score || 0) && maxHeight === (existingForUser.maxHeight || 0) && replay && !existingForUser.replay);
 
-    lastSubmittedScore = { score, maxHeight, time, userId: leaderboardUserId, displayName: playerName || 'Local Player' };
+    lastSubmittedScore = { score, maxHeight, time, seed, userId: leaderboardUserId, displayName: playerName || 'Local Player' };
 
     if (!isBetter) {
         localLeaderboardCache = null;
@@ -1793,6 +1886,7 @@ function addLocalLeaderboardEntry(playerName, score, maxHeight, time, replay = n
         score,
         maxHeight,
         time,
+        seed,
         replay,
         createdAt: existingForUser?.createdAt || Date.now(),
         updatedAt: Date.now(),
@@ -1914,9 +2008,10 @@ export async function addLeaderboardEntry(playerName, score, maxHeight, time) {
     time = String(time || '00:00').slice(0, 24);
     let leaderboardUserId = getLeaderboardUserId();
     const replay = compactReplayForStorage(buildCurrentRunReplay(score, maxHeight, time));
+    const seed = sanitizeRunSeed(replay?.seed || getCurrentRunSeed());
 
     // Store details before sending to Firestore (create an object for storage)
-    const entryDataForHighlight = { score, maxHeight, time };
+    const entryDataForHighlight = { score, maxHeight, time, seed };
     lastSubmittedScore = { ...entryDataForHighlight, userId: leaderboardUserId }; // Store a copy
     lastGlobalSubmitStatus = null;
     console.log("Storing last submitted score for highlighting:", lastSubmittedScore);
@@ -1950,6 +2045,7 @@ export async function addLeaderboardEntry(playerName, score, maxHeight, time) {
             score,
             maxHeight,
             time,
+            seed,
             replay
         });
         // Invalidate local cache so next fetch gets the new score
@@ -1968,6 +2064,7 @@ export async function addLeaderboardEntry(playerName, score, maxHeight, time) {
                 score,
                 maxHeight,
                 time,
+                seed,
                 replay
             };
             lastGlobalSubmitStatus = await submitGlobalLeaderboardViaRestWithReplayFallback(idToken, leaderboardUserId, restEntryData);

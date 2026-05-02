@@ -337,6 +337,25 @@ body.game-screen-active {
     text-align: left;
 }
 
+.seed-random-row {
+    display: flex;
+    justify-content: center;
+    color: #c7dcd0;
+    font-size: 0.9em;
+}
+
+.seed-random-row label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.seed-random-row input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+}
+
 .auth-divider {
     display: flex;
     align-items: center;
@@ -745,6 +764,21 @@ body.game-screen-active {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.menu-leaderboard-row .name .leaderboard-player-name,
+.menu-leaderboard-row .name .leaderboard-seed {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.leaderboard-seed {
+    margin-top: 2px;
+    color: #f9c22b;
+    font-size: 0.72em;
+    opacity: 0.92;
 }
 
 .menu-leaderboard-row .metric,
@@ -1711,6 +1745,10 @@ body.mobile-viewport .menu-leaderboard-row .number {
 body.mobile-viewport .menu-leaderboard-row .name {
     grid-area: name;
     font-size: 0.95rem;
+}
+
+body.mobile-viewport .leaderboard-seed {
+    font-size: 0.68rem;
 }
 
 body.mobile-viewport .menu-leaderboard-row .score {
