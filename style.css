@@ -703,7 +703,7 @@ body.game-screen-active {
 
 .menu-leaderboard-row {
     display: grid;
-    grid-template-columns: 54px minmax(110px, 1fr) 86px 90px 84px 42px;
+    grid-template-columns: 54px minmax(110px, 1fr) 86px 90px 84px 70px;
     gap: 10px;
     align-items: center;
     padding: 9px 10px;
@@ -753,15 +753,18 @@ body.game-screen-active {
 }
 
 .replay-icon-button {
-    width: 34px;
-    min-width: 34px;
-    height: 30px;
+    width: 62px;
+    min-width: 62px;
+    height: 48px;
     padding: 0;
     border: 1px solid rgba(143, 211, 255, 0.4);
     border-radius: 5px;
     background: rgba(143, 211, 255, 0.12);
     color: #8fd3ff;
     cursor: pointer;
+    font-family: 'Petitinho', sans-serif;
+    font-size: 1.85rem;
+    line-height: 1;
 }
 
 .replay-icon-button:disabled {
@@ -790,7 +793,7 @@ body.game-screen-active {
     width: 42px;
     height: 42px;
     min-width: 42px;
-    margin-left: auto;
+    margin-right: auto;
     margin-bottom: -42px;
     padding: 0;
     border: none;
@@ -1455,7 +1458,7 @@ input[type=range]::-moz-range-track {
     }
 
     .menu-leaderboard-row {
-        grid-template-columns: 42px minmax(80px, 1fr) 62px 70px 34px;
+        grid-template-columns: 42px minmax(80px, 1fr) 62px 70px 58px;
         gap: 7px;
         font-size: 0.82rem;
     }
@@ -1683,7 +1686,7 @@ body.mobile-viewport .menu-leaderboard-row.header {
 }
 
 body.mobile-viewport .menu-leaderboard-row {
-    grid-template-columns: 48px minmax(0, 1fr) 38px;
+    grid-template-columns: 48px minmax(0, 1fr) 66px;
     grid-template-areas:
         "rank name replay"
         "rank score replay"
@@ -1748,9 +1751,23 @@ body.mobile-viewport .menu-leaderboard-row .time::before {
 body.mobile-viewport .menu-leaderboard-row .replay-icon-button {
     grid-area: replay;
     align-self: center;
-    width: 34px;
-    min-width: 34px;
-    height: 42px;
+    justify-self: end;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    min-width: 64px;
+    height: 68px;
+    font-size: 1.95rem;
+}
+
+body.mobile-viewport .menu-leaderboard-row .replay-icon-button::before {
+    content: "Replay";
+    margin-bottom: 4px;
+    color: #c7dcd0;
+    font-size: 0.55rem;
+    line-height: 1;
 }
 
 body.mobile-viewport .leaderboard-card .menu-actions {

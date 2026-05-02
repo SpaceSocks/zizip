@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-77';
-import * as audio from './audio.js?v=mobile-portrait-77'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-78';
+import * as audio from './audio.js?v=mobile-portrait-78'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-77';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-78';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-77';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-78';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -129,6 +129,7 @@ let sessionPasswordCache = '';
 let sessionPasswordEmail = '';
 let redirectResultHandled = false;
 let pendingGoogleAliasUser = null;
+let initialAuthStateHandled = false;
 
 function clearLegacySavedPassword() {
     localStorage.removeItem(LEGACY_SAVED_PASSWORD_KEY);
@@ -268,8 +269,8 @@ function migrateMobileControlDefaults() {
 
 function getMobileControlSettings() {
     return {
-        moveSize: readControlSetting(MOBILE_CONTROL_PREFS.moveSize, MOBILE_CONTROL_DEFAULTS.moveSize, 50, 240),
-        jumpSize: readControlSetting(MOBILE_CONTROL_PREFS.jumpSize, MOBILE_CONTROL_DEFAULTS.jumpSize, 50, 180),
+        moveSize: readControlSetting(MOBILE_CONTROL_PREFS.moveSize, MOBILE_CONTROL_DEFAULTS.moveSize, 50, 300),
+        jumpSize: readControlSetting(MOBILE_CONTROL_PREFS.jumpSize, MOBILE_CONTROL_DEFAULTS.jumpSize, 50, 300),
         moveTransparency: readControlSetting(MOBILE_CONTROL_PREFS.moveTransparency, MOBILE_CONTROL_DEFAULTS.moveTransparency, 0, 100),
         jumpTransparency: readControlSetting(MOBILE_CONTROL_PREFS.jumpTransparency, MOBILE_CONTROL_DEFAULTS.jumpTransparency, 0, 100)
     };
@@ -374,7 +375,7 @@ function renderLeaderboard(entries = [], targetList = menuLeaderboardList, repla
         makeLeaderboardCell('metric', 'Score'),
         makeLeaderboardCell('metric', 'Height'),
         makeLeaderboardCell('time', 'Time'),
-        makeLeaderboardCell('replay', 'Run')
+        makeLeaderboardCell('replay', 'Replay')
     );
     targetList.appendChild(header);
 
@@ -392,6 +393,7 @@ function renderLeaderboard(entries = [], targetList = menuLeaderboardList, repla
         const replayButton = document.createElement('button');
         replayButton.className = 'replay-icon-button';
         replayButton.type = 'button';
+        replayButton.setAttribute('aria-label', hasReplay ? 'Watch replay' : 'No replay saved');
         replayButton.textContent = hasReplay ? '▶' : '-';
         replayButton.title = hasReplay ? 'Watch replay' : 'No replay saved';
         replayButton.disabled = !hasReplay;
@@ -1576,9 +1578,31 @@ function hideOptionsMenu() {
 
 async function initializeAuthStateListener() {
     try {
-        const { auth, onAuthStateChanged } = await getAuthApi();
+        const { auth, onAuthStateChanged, signOut } = await getAuthApi();
         onAuthStateChanged(auth, async (user) => {
+            const isInitialAuthState = !initialAuthStateHandled;
+            initialAuthStateHandled = true;
             if (user) {
+                if (isInitialAuthState && !getPendingRedirectProvider()) {
+                    console.log("Signing out previous browser session on fresh app open.");
+                    try {
+                        await signOut(auth);
+                    } catch (error) {
+                        console.warn("Could not sign out previous session on startup.", error);
+                    }
+                    state.setPlayerInfo('local-player', localAliasInput?.value || 'Local Player');
+                    state.setActiveLeaderboardSource('local');
+                    state.clearLeaderboardCache();
+                    setOnlinePlayReady(false);
+                    if (quitButton) quitButton.textContent = 'Quit';
+                    if (state.getCurrentGameState() === state.GameState.MainMenu) {
+                        infoText.textContent = 'Signed out from the previous session. Sign in or play local.';
+                    }
+                    authButton.disabled = false;
+                    setProviderSignInButtonsDisabled(false);
+                    quitButton.disabled = false;
+                    return;
+                }
                 console.log("User already signed in:", user);
                 if (quitButton) quitButton.textContent = 'Sign Out';
                 if (state.getCurrentGameState() === state.GameState.MainMenu) {
