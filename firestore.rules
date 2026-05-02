@@ -90,6 +90,32 @@ service cloud.firestore {
         && validReplayShape();
     }
 
+    function validProfileCreateShape() {
+      return request.resource.data.keys().hasOnly([
+          'alias',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.alias is string
+        && request.resource.data.alias.size() > 0
+        && request.resource.data.alias.size() <= 15
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validProfileUpdateShape() {
+      return request.resource.data.keys().hasOnly([
+          'alias',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.alias is string
+        && request.resource.data.alias.size() > 0
+        && request.resource.data.alias.size() <= 15
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+    }
+
     match /leaderboard/{entryId} {
       allow read: if true;
 
@@ -102,6 +128,21 @@ service cloud.firestore {
         && request.resource.data.userId == resource.data.userId
         && request.resource.data.timestamp == resource.data.timestamp
         && validLeaderboardShape();
+
+      allow delete: if false;
+    }
+
+    match /profiles/{profileId} {
+      allow read: if signedIn()
+        && request.auth.uid == profileId;
+
+      allow create: if leaderboardWriter()
+        && request.auth.uid == profileId
+        && validProfileCreateShape();
+
+      allow update: if leaderboardWriter()
+        && request.auth.uid == profileId
+        && validProfileUpdateShape();
 
       allow delete: if false;
     }

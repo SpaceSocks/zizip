@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-47';
-import * as audio from './audio.js?v=mobile-portrait-47'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-48';
+import * as audio from './audio.js?v=mobile-portrait-48'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-47';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-48';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-47';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-48';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -17,6 +17,9 @@ const aliasInput = document.getElementById('aliasInput'); // Was playerNameInput
 const aliasGroup = document.querySelector('.input-group.register-only');
 const authButton = document.getElementById('authButton'); // Was startButton
 const googleSignInButton = document.getElementById('googleSignInButton');
+const googleAliasPanel = document.getElementById('googleAliasPanel');
+const googleAliasInput = document.getElementById('googleAliasInput');
+const googleAliasSaveButton = document.getElementById('googleAliasSaveButton');
 const quitButton = document.getElementById('quitButton');
 const localPlayButton = document.getElementById('localPlayButton');
 const infoText = document.getElementById('infoText');
@@ -80,6 +83,7 @@ const controllerToast = document.getElementById('controllerToast');
 const LAST_EMAIL_KEY = 'zipzip_lastEmail';
 const LEGACY_SAVED_PASSWORD_KEY = 'zipzip_savedPassword';
 const LOCAL_ALIAS_KEY = 'zipzip_localAlias';
+const PLAYER_PROFILES_COLLECTION = 'profiles';
 const MOBILE_CONTROL_PREFS = {
     moveSize: 'zipzip_mobileMoveControlSize',
     jumpSize: 'zipzip_mobileJumpControlSize',
@@ -114,6 +118,7 @@ let controllerToastTimer = null;
 let sessionPasswordCache = '';
 let sessionPasswordEmail = '';
 let redirectResultHandled = false;
+let pendingGoogleAliasUser = null;
 
 function clearLegacySavedPassword() {
     localStorage.removeItem(LEGACY_SAVED_PASSWORD_KEY);
@@ -455,9 +460,104 @@ async function getAuthApi() {
     return authApiPromise;
 }
 
-function getOnlineDisplayName(user) {
-    const emailName = user?.email ? user.email.split('@')[0] : '';
-    return user?.displayName || emailName || 'Anon';
+async function getProfileApi() {
+    const [{ db }, firestoreApi] = await Promise.all([
+        getFirebaseServices(),
+        import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js")
+    ]);
+    return { db, ...firestoreApi };
+}
+
+function cleanAlias(rawAlias) {
+    return String(rawAlias || '').trim().replace(/\s+/g, ' ').slice(0, 15);
+}
+
+function isValidAlias(alias) {
+    return alias.length >= 1 && alias.length <= 15;
+}
+
+function isGoogleAuthUser(user) {
+    return Array.isArray(user?.providerData) &&
+        user.providerData.some(provider => provider?.providerId === 'google.com');
+}
+
+async function loadSavedGameAlias(user) {
+    if (!user?.uid) return '';
+    try {
+        const { db, doc, getDoc } = await getProfileApi();
+        const profileSnap = await getDoc(doc(db, PLAYER_PROFILES_COLLECTION, user.uid));
+        const alias = cleanAlias(profileSnap.exists() ? profileSnap.data()?.alias : '');
+        return isValidAlias(alias) ? alias : '';
+    } catch (error) {
+        console.warn("Could not load saved game alias.", error);
+        return '';
+    }
+}
+
+async function saveGameAlias(user, alias) {
+    const cleanedAlias = cleanAlias(alias);
+    if (!user?.uid || !isValidAlias(cleanedAlias)) {
+        throw new Error('Choose an alias between 1 and 15 characters.');
+    }
+
+    const { db, doc, getDoc, setDoc, serverTimestamp } = await getProfileApi();
+    const profileRef = doc(db, PLAYER_PROFILES_COLLECTION, user.uid);
+    const existingProfile = await getDoc(profileRef);
+    const payload = {
+        alias: cleanedAlias,
+        updatedAt: serverTimestamp()
+    };
+
+    if (!existingProfile.exists()) {
+        payload.createdAt = serverTimestamp();
+    }
+
+    await setDoc(profileRef, payload, { merge: true });
+
+    try {
+        const { updateProfile } = await getAuthApi();
+        await updateProfile(user, { displayName: cleanedAlias });
+    } catch (error) {
+        console.warn("Saved alias, but could not mirror it to Firebase Auth profile.", error);
+    }
+
+    return cleanedAlias;
+}
+
+async function resolveGameAliasForUser(user, preferredAlias = '') {
+    const savedAlias = await loadSavedGameAlias(user);
+    if (savedAlias) return savedAlias;
+
+    const preferred = cleanAlias(preferredAlias);
+    if (isValidAlias(preferred)) {
+        return saveGameAlias(user, preferred);
+    }
+
+    if (!isGoogleAuthUser(user)) {
+        const fallback = cleanAlias(user?.displayName || (user?.email ? user.email.split('@')[0] : ''));
+        if (isValidAlias(fallback)) {
+            return saveGameAlias(user, fallback);
+        }
+    }
+
+    const aliasError = new Error('alias-required');
+    aliasError.code = 'alias-required';
+    throw aliasError;
+}
+
+function showGoogleAliasPrompt(user) {
+    pendingGoogleAliasUser = user;
+    if (googleAliasPanel) googleAliasPanel.style.display = 'block';
+    if (googleAliasInput) {
+        googleAliasInput.value = '';
+        googleAliasInput.focus();
+    }
+    infoText.textContent = 'Choose a Cosmic Zip alias before your first Google run.';
+}
+
+function hideGoogleAliasPrompt() {
+    pendingGoogleAliasUser = null;
+    if (googleAliasPanel) googleAliasPanel.style.display = 'none';
 }
 
 function shouldUseGoogleRedirect() {
@@ -469,7 +569,21 @@ function shouldUseGoogleRedirect() {
 }
 
 async function startOnlineGameForUser(user, successMessage) {
-    state.setPlayerInfo(user.uid, getOnlineDisplayName(user));
+    let gameAlias;
+    try {
+        gameAlias = await resolveGameAliasForUser(user, googleAliasInput?.value || aliasInput?.value || '');
+    } catch (error) {
+        if (error?.code === 'alias-required') {
+            authButton.disabled = false;
+            if (googleSignInButton) googleSignInButton.disabled = false;
+            showGoogleAliasPrompt(user);
+            return false;
+        }
+        throw error;
+    }
+
+    hideGoogleAliasPrompt();
+    state.setPlayerInfo(user.uid, gameAlias);
     state.setActiveLeaderboardSource('global');
     if (user.email) {
         localStorage.setItem(LAST_EMAIL_KEY, user.email);
@@ -488,6 +602,7 @@ async function startOnlineGameForUser(user, successMessage) {
         authButton.disabled = false;
         if (googleSignInButton) googleSignInButton.disabled = false;
     }, 1000);
+    return true;
 }
 
 function buildGoogleProvider(GoogleAuthProvider) {
@@ -649,6 +764,7 @@ export function showLoginScreen() {
         passwordInput.value = '';
     }
     rememberPasswordCheckbox.checked = !!savedEmail;
+    hideGoogleAliasPrompt();
     clearLegacySavedPassword();
     aliasInput.value = '';
     setAuthMode(false); // Ensure it starts in Login mode
@@ -808,6 +924,7 @@ async function handleAuthClick() {
             // Set the display name
             await updateProfile(userCredential.user, { displayName: alias });
             console.log("Display name updated.");
+            await saveGameAlias(userCredential.user, alias);
             // Store relevant info (UID and Display Name)
             state.setPlayerInfo(userCredential.user.uid, alias);
             state.setActiveLeaderboardSource('global');
@@ -821,8 +938,8 @@ async function handleAuthClick() {
             // --- Login --- //
             userCredential = await signInWithEmailAndPassword(auth, email, password);
             console.log("Login successful:", userCredential.user);
-            // Store relevant info (UID and Display Name from profile)
-            state.setPlayerInfo(userCredential.user.uid, userCredential.user.displayName || 'Anon'); // Use saved name or default
+            const gameAlias = await resolveGameAliasForUser(userCredential.user);
+            state.setPlayerInfo(userCredential.user.uid, gameAlias);
             state.setActiveLeaderboardSource('global');
             if (rememberPasswordCheckbox.checked) {
                 localStorage.setItem(LAST_EMAIL_KEY, email);
@@ -859,6 +976,7 @@ async function handleAuthClick() {
 }
 
 async function handleGoogleSignInClick() {
+    hideGoogleAliasPrompt();
     if (googleSignInButton) googleSignInButton.disabled = true;
     authButton.disabled = true;
     requestMobileFullscreen();
@@ -904,6 +1022,37 @@ async function handleGoogleSignInClick() {
 
         authButton.disabled = false;
         if (googleSignInButton) googleSignInButton.disabled = false;
+    }
+}
+
+async function handleGoogleAliasSaveClick() {
+    if (!pendingGoogleAliasUser) {
+        infoText.textContent = 'Start Google sign-in first, then choose your alias.';
+        return;
+    }
+
+    const alias = cleanAlias(googleAliasInput?.value || '');
+    if (!isValidAlias(alias)) {
+        infoText.textContent = 'Alias must be 1 to 15 characters.';
+        googleAliasInput?.focus();
+        return;
+    }
+
+    if (googleAliasSaveButton) googleAliasSaveButton.disabled = true;
+    if (googleSignInButton) googleSignInButton.disabled = true;
+    authButton.disabled = true;
+    infoText.textContent = 'Saving alias...';
+
+    try {
+        await saveGameAlias(pendingGoogleAliasUser, alias);
+        await startOnlineGameForUser(pendingGoogleAliasUser, 'Alias saved! Starting game...');
+    } catch (error) {
+        console.error("Google alias save error:", error);
+        infoText.textContent = error?.message || 'Could not save alias. Try again.';
+        authButton.disabled = false;
+        if (googleSignInButton) googleSignInButton.disabled = false;
+    } finally {
+        if (googleAliasSaveButton) googleAliasSaveButton.disabled = false;
     }
 }
 
@@ -1192,8 +1341,11 @@ async function initializeAuthStateListener() {
             if (user) {
                 console.log("User already signed in:", user);
                 if (state.getCurrentGameState() === state.GameState.MainMenu) {
-                    state.setPlayerInfo(user.uid, user.displayName || 'Anon');
-                    state.setActiveLeaderboardSource('global');
+                    const savedAlias = await loadSavedGameAlias(user);
+                    if (savedAlias) {
+                        state.setPlayerInfo(user.uid, savedAlias);
+                        state.setActiveLeaderboardSource('global');
+                    }
                 }
                 await clearFreshStartRemoteLeaderboard();
             } else {
@@ -1276,6 +1428,9 @@ export function initializeUI() {
     if (!localAliasInput) console.error('localAliasInput not found during init!');
     if (!authButton) console.error('authButton not found during init!');
     if (!googleSignInButton) console.error('googleSignInButton not found during init!');
+    if (!googleAliasPanel) console.error('googleAliasPanel not found during init!');
+    if (!googleAliasInput) console.error('googleAliasInput not found during init!');
+    if (!googleAliasSaveButton) console.error('googleAliasSaveButton not found during init!');
     if (!quitButton) console.error('quitButton not found during init!');
     if (!localPlayButton) console.error('localPlayButton not found during init!');
     if (!leaderboardButton) console.error('leaderboardButton not found!');
@@ -1320,6 +1475,9 @@ export function initializeUI() {
     authButton.addEventListener('click', handleAuthClick);
     if (googleSignInButton) {
         googleSignInButton.addEventListener('click', handleGoogleSignInClick);
+    }
+    if (googleAliasSaveButton) {
+        googleAliasSaveButton.addEventListener('click', handleGoogleAliasSaveClick);
     }
     quitButton.addEventListener('click', handleQuitClick);
     if (localPlayButton) {
@@ -1367,13 +1525,15 @@ export function initializeUI() {
     });
 
     // Optional: Enter key submission
-    [localAliasInput, emailInput, passwordInput, aliasInput].forEach(input => {
+    [localAliasInput, emailInput, passwordInput, aliasInput, googleAliasInput].forEach(input => {
         if (!input) return;
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !authButton.disabled) {
                 e.preventDefault();
                 if (input === localAliasInput) {
                     handleLocalPlayClick();
+                } else if (input === googleAliasInput) {
+                    handleGoogleAliasSaveClick();
                 } else {
                     handleAuthClick();
                 }

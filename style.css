@@ -264,7 +264,7 @@ body.game-screen-active {
 
 .login-lanes {
     display: grid;
-    grid-template-columns: minmax(270px, 0.9fr) minmax(420px, 1.45fr);
+    grid-template-columns: minmax(270px, 0.9fr) minmax(420px, 1.35fr);
     gap: 18px;
     align-items: stretch;
 }
@@ -272,7 +272,7 @@ body.game-screen-active {
 .login-panel {
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 12px;
     min-width: 0;
     padding: 16px;
@@ -287,6 +287,26 @@ body.game-screen-active {
     text-align: center;
     font-size: 1em;
     letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.online-auth-block {
+    padding: 12px;
+    border: 1px solid rgba(199, 220, 208, 0.16);
+    border-radius: 8px;
+    background: rgba(42, 33, 48, 0.32);
+}
+
+.google-auth-block {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.email-auth-block {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
 .local-panel .input-group {
@@ -433,6 +453,33 @@ body.game-screen-active {
     border: 1px solid rgba(199, 220, 208, 0.38) !important;
     background: #ffffff !important;
     color: #2e222f !important;
+}
+
+.google-alias-panel {
+    padding: 10px;
+    border: 1px solid rgba(249, 194, 43, 0.32);
+    border-radius: 8px;
+    background: rgba(249, 194, 43, 0.08);
+}
+
+.google-alias-panel label {
+    display: block;
+    margin-bottom: 7px;
+    color: #f9c22b;
+    font-size: 0.86rem;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.google-alias-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+}
+
+#googleAliasSaveButton {
+    padding-inline: 16px;
+    white-space: nowrap;
 }
 
 .google-mark {
@@ -1256,6 +1303,18 @@ body.mobile-viewport .login-lanes {
 
 body.mobile-viewport .login-panel {
     padding: 14px;
+}
+
+body.mobile-viewport .online-auth-block {
+    padding: 10px;
+}
+
+body.mobile-viewport .google-alias-row {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+body.mobile-viewport #googleAliasSaveButton {
+    width: 100%;
 }
 
 body.mobile-viewport .input-group {

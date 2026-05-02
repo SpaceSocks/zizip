@@ -11,9 +11,9 @@
     <title>Cosmic Zip</title>
     <!-- R64 Font -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&family=VT323&display=swap&family=Petit+Formal+Script&family=Petitet+Formal+Script" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=mobile-portrait-47">
+    <link rel="stylesheet" href="style.css?v=mobile-portrait-48">
     <link rel="icon" type="image/png" href="favicon.png?v=cosmic-zip-1">
-    <link rel="manifest" href="manifest.webmanifest?v=mobile-portrait-47">
+    <link rel="manifest" href="manifest.webmanifest?v=mobile-portrait-48">
     <!-- <script src="https://download.playfab.com/PlayFabClientApi.js"></script> -->
 </head>
 <body>
@@ -24,7 +24,7 @@
         <form id="authForm" autocomplete="on">
             <div class="login-lanes">
                 <section class="login-panel local-panel" aria-label="Local play">
-                    <div class="section-label">Local run</div>
+                    <div class="section-label">Local Run</div>
                     <div class="input-group">
                         <label for="localAliasInput">Alias:</label>
                         <input type="text" id="localAliasInput" name="local-alias" placeholder="Leaderboard name" maxlength="15" autocomplete="nickname">
@@ -33,8 +33,23 @@
                 </section>
 
                 <section class="login-panel online-panel" aria-label="Online leaderboard login">
-                    <div class="auth-divider">Online leaderboard login</div>
+                    <div class="section-label">Online Leaderboard</div>
+                    <div class="online-auth-block google-auth-block">
+                        <button id="googleSignInButton" class="google-signin-button" type="button" aria-label="Continue with Google">
+                            <span class="google-mark" aria-hidden="true">G</span>
+                            <span>Continue with Google</span>
+                        </button>
+                        <div id="googleAliasPanel" class="google-alias-panel" style="display: none;">
+                            <label for="googleAliasInput">Choose your Cosmic Zip alias</label>
+                            <div class="google-alias-row">
+                                <input type="text" id="googleAliasInput" name="google-display-name" placeholder="Leaderboard alias" maxlength="15" autocomplete="nickname">
+                                <button id="googleAliasSaveButton" type="button">Save & Play</button>
+                            </div>
+                        </div>
+                    </div>
 
+                    <div class="auth-divider">Email login</div>
+                    <div class="online-auth-block email-auth-block">
                     <div class="input-group">
                         <label for="emailInput">Email:</label>
                         <input type="email" id="emailInput" name="email" placeholder="your@email.com" required autocomplete="username">
@@ -58,14 +73,11 @@
                         <button id="authButton" type="button">Login</button>
                         <button id="quitButton" type="button">Quit</button>
                     </div>
-                    <button id="googleSignInButton" class="google-signin-button" type="button" aria-label="Continue with Google">
-                        <span class="google-mark" aria-hidden="true">G</span>
-                        <span>Continue with Google</span>
-                    </button>
+                    </div>
                 </section>
             </div>
 
-            <div id="infoText">Enter email & password to Login or Register.</div>
+            <div id="infoText">Play local anytime, or sign in online to save global runs.</div>
 
             <div class="auth-links">
                 <div class="toggle-auth">
@@ -234,7 +246,7 @@
     </div>
 
     <!-- Load main script as a module -->
-    <script type="module" src="game.js?v=mobile-portrait-47"></script>
+    <script type="module" src="game.js?v=mobile-portrait-48"></script>
     <!-- Note: The Firebase SDKs are now imported within firebaseConfig.js -->
 </body>
 </html>
