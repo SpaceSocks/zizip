@@ -1,9 +1,9 @@
 // This file will handle graphics, drawing, and canvas resizing
 
-import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-52';
-import * as state from './state.js?v=mobile-portrait-52';
-import { player } from './entities.js?v=mobile-portrait-52'; // Need player for drawing
-import * as ui from './ui.js?v=mobile-portrait-52'; // Import ui module
+import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-53';
+import * as state from './state.js?v=mobile-portrait-53';
+import { player } from './entities.js?v=mobile-portrait-53'; // Need player for drawing
+import * as ui from './ui.js?v=mobile-portrait-53'; // Import ui module
 
 // --- Canvas Setup ---
 export const canvas = document.getElementById('gameCanvas');
@@ -407,7 +407,7 @@ function getPlayerAnimationFrame(animationState = 'idle', timeMs = performance.n
     return animation.start + Math.floor((timeMs / 1000) * animation.fps) % animation.frames;
 }
 
-function drawPlayerSpriteAt(x, y, facing = 1, alpha = 1, tint = null, sizeScale = 1, animationState = 'idle', animationFrame = null) {
+function drawPlayerSpriteAt(x, y, facing = 1, alpha = 1, tint = null, sizeScale = 1, animationState = 'idle', animationFrame = null, rotation = 0) {
     const box = getPlayerSpriteDrawBox(x, y, sizeScale);
     const frameIndex = Number.isFinite(animationFrame)
         ? animationFrame
@@ -421,6 +421,23 @@ function drawPlayerSpriteAt(x, y, facing = 1, alpha = 1, tint = null, sizeScale 
     }
 
     if (isSpriteReady(sprite)) {
+        if (rotation) {
+            ctx.translate(box.x + box.width / 2, box.y + box.height / 2);
+            ctx.rotate(rotation);
+            if (facing < 0) {
+                ctx.scale(-1, 1);
+            }
+            const drawX = -box.width / 2;
+            const drawY = -box.height / 2;
+            if (sprite === sprites.playerSheet) {
+                ctx.drawImage(sprite, frameIndex * PLAYER_ANIMATION.frameWidth, 0, PLAYER_ANIMATION.frameWidth, PLAYER_ANIMATION.frameHeight, drawX, drawY, box.width, box.height);
+            } else {
+                ctx.drawImage(sprite, drawX, drawY, box.width, box.height);
+            }
+            ctx.restore();
+            return;
+        }
+
         if (facing < 0) {
             ctx.translate(box.x + box.width, box.y);
             ctx.scale(-1, 1);
@@ -438,7 +455,15 @@ function drawPlayerSpriteAt(x, y, facing = 1, alpha = 1, tint = null, sizeScale 
         }
     } else {
         ctx.fillStyle = tint || player.color;
-        ctx.fillRect(x, y, player.width * sizeScale, player.height * sizeScale);
+        if (rotation) {
+            const width = player.width * sizeScale;
+            const height = player.height * sizeScale;
+            ctx.translate(x + width / 2, y + height / 2);
+            ctx.rotate(rotation);
+            ctx.fillRect(-width / 2, -height / 2, width, height);
+        } else {
+            ctx.fillRect(x, y, player.width * sizeScale, player.height * sizeScale);
+        }
     }
 
     ctx.restore();
@@ -812,7 +837,17 @@ function drawPlayer(player) {
     }
 
     // --- Draw Main Player (on top) ---
-    drawPlayerSpriteAt(player.x, player.y, player.facing || 1, 1, null, 1, getPlayerAnimationState(player));
+    drawPlayerSpriteAt(
+        player.x,
+        player.y,
+        player.facing || 1,
+        1,
+        null,
+        1,
+        getPlayerAnimationState(player),
+        null,
+        player.tumbleActive ? (player.tumbleAngle || 0) : 0
+    );
 }
 
 function drawPlatform(platform) {
@@ -1137,7 +1172,7 @@ function drawReplay() {
             drawReplayFallbackPlatform(view, sample, playerX, playerY, playerDrawWidth, playerDrawHeight);
         }
         drawReplayPlayerTrail(viewer, view, spriteScale, replayPlatformScreenX, replayPlatformScreenY, replayPlatformData);
-        drawPlayerSpriteAt(playerX, playerY, sample.facing || 1, 1, null, spriteScale, sample.animationState || 'idle', sample.animationFrame);
+        drawPlayerSpriteAt(playerX, playerY, sample.facing || 1, 1, null, spriteScale, sample.animationState || 'idle', sample.animationFrame, sample.tumbleAngle || 0);
         drawReplayScorePopups(viewer, view);
     }
     drawDeathParticles();

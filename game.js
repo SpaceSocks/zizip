@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-52';
-import * as graphics from './graphics.js?v=mobile-portrait-52';
-import * as input from './input.js?v=mobile-portrait-52';
-import * as audio from './audio.js?v=mobile-portrait-52';
-import { player, createPlatform } from './entities.js?v=mobile-portrait-52';
-import * as ui from './ui.js?v=mobile-portrait-52'; // Import UI
+import * as state from './state.js?v=mobile-portrait-53';
+import * as graphics from './graphics.js?v=mobile-portrait-53';
+import * as input from './input.js?v=mobile-portrait-53';
+import * as audio from './audio.js?v=mobile-portrait-53';
+import { player, createPlatform } from './entities.js?v=mobile-portrait-53';
+import * as ui from './ui.js?v=mobile-portrait-53'; // Import UI
 import {
     MIN_VERT_GAP, MAX_VERT_GAP, PLATFORM_START_WIDTH, PLATFORM_EARLY_MIN_WIDTH, PLATFORM_MIN_WIDTH,
     PLATFORM_WIDTH_DIFFICULTY_HEIGHT, PLAYER_GRAVITY, PLAYER_JUMP_POWER, PLAYER_SPEED,
@@ -12,7 +12,7 @@ import {
     PLATFORM_PROBABILITY, PLATFORM_MIDDLE_THRESHOLD,
     PLATFORM_FLASH_DURATION, PLATFORM_FLASH_INTERVAL_MAX, PLATFORM_FLASH_INTERVAL_MIN,
     PLATFORM_FLASH_START_DELAY, PLAYER_AIR_CONTROL_FACTOR
-} from './constants.js?v=mobile-portrait-52';
+} from './constants.js?v=mobile-portrait-53';
 
 // --- Game Variables ---
 let animationFrameId = null;
@@ -23,6 +23,10 @@ let lastDeathReplayTime = 0;
 const DEATH_CAMERA_FOLLOW_Y_FACTOR = 0.68;
 const DEATH_EXPLODE_DELAY = 1.05;
 const DEATH_RESPAWN_DELAY = 0.65;
+const TUMBLE_FALL_DELAY = 0.46;
+const TUMBLE_MIN_FALL_SPEED = 7.5;
+const TUMBLE_START_Y_FACTOR = 0.66;
+const TUMBLE_ROTATION_SPEED = Math.PI * 2.15;
 const STARTING_PLATFORM_BOTTOM_OFFSET = 115;
 const RESPAWN_PLATFORM_BOTTOM_OFFSET = 150;
 const SPAWN_PADDING = 50;
@@ -79,6 +83,7 @@ function recordCurrentReplaySample(force = false, timeOverride = null) {
         facing: player.facing || 1,
         animationState,
         animationFrame: getPlayerAnimationFrame(animationState, replayTime),
+        tumbleAngle: player.tumbleActive ? (player.tumbleAngle || 0) : 0,
         visible: player.visible !== false,
         cameraDrop: deathSequence?.cameraDrop || 0,
         groundedPlatformId: groundedPlatform?.id ?? null,
@@ -113,6 +118,32 @@ function updatePlayerTrail() {
         if (player.trailPositions.length > player.maxTrailLength) {
             player.trailPositions.pop();
         }
+    }
+}
+
+function resetPlayerTumble() {
+    player.fallTumbleTime = 0;
+    player.tumbleActive = false;
+    player.tumbleAngle = 0;
+}
+
+function updatePlayerTumble(dt) {
+    const isFallingDown = !player.isGrounded && player.velocityY > TUMBLE_MIN_FALL_SPEED;
+    const isLowEnoughToBeDangerous = player.y > graphics.canvas.height * TUMBLE_START_Y_FACTOR;
+
+    if (!isFallingDown || !isLowEnoughToBeDangerous || player.visible === false) {
+        resetPlayerTumble();
+        return;
+    }
+
+    player.fallTumbleTime = (player.fallTumbleTime || 0) + dt;
+    if (player.fallTumbleTime >= TUMBLE_FALL_DELAY) {
+        player.tumbleActive = true;
+    }
+
+    if (player.tumbleActive) {
+        const spinDirection = player.facing < 0 ? -1 : 1;
+        player.tumbleAngle = ((player.tumbleAngle || 0) + TUMBLE_ROTATION_SPEED * spinDirection * dt) % (Math.PI * 2);
     }
 }
 
@@ -217,6 +248,7 @@ function beginDeathSequence() {
     player.isGrounded = false;
     player.isDashing = false;
     player.groundedOnPlatform = null;
+    player.tumbleActive = true;
     player.velocityX *= 0.35;
     state.setCurrentGameState(state.GameState.Dying);
 }
@@ -231,6 +263,8 @@ function updateDeathSequence(dt) {
     player.y += player.velocityY * dt * 60;
     player.x += player.velocityX * dt * 60;
     player.velocityX *= 0.985;
+    player.tumbleActive = true;
+    player.tumbleAngle = ((player.tumbleAngle || 0) + TUMBLE_ROTATION_SPEED * dt) % (Math.PI * 2);
     if (Math.abs(player.velocityX) > 0.1) {
         player.facing = Math.sign(player.velocityX);
     }
@@ -497,6 +531,7 @@ function update(dt) {
 
     // Play landing sound
     if (player.isGrounded && !wasGrounded) {
+        resetPlayerTumble();
         state.recordRunReplayEvent({
             type: 'landing',
             middle: landedOnMiddle,
@@ -508,6 +543,8 @@ function update(dt) {
         });
         audio.playLandingSound(landedOnMiddle);
     }
+
+    updatePlayerTumble(dt);
 
     // --- 4. Player Horizontal Movement (AFTER collision/ground check) ---
     let targetVelocityX = 0;
@@ -805,6 +842,7 @@ function resetPlayerState() {
     player.isDashing = false;
     player.lastDashTime = 0;
     player.facing = 1;
+    resetPlayerTumble();
     player.jumpPower = getPlayerJumpPower();
     player.baseGravity = getPlayerGravity();
     player.gravity = player.baseGravity;
@@ -884,9 +922,10 @@ function respawnPlayer() {
         player.isGrounded = true;
         player.visible = true;
         player.jumpsLeft = 2;
-        player.isDashing = false;
-        player.facing = 1;
-        player.jumpPower = getPlayerJumpPower();
+    player.isDashing = false;
+    player.facing = 1;
+    resetPlayerTumble();
+    player.jumpPower = getPlayerJumpPower();
         player.baseGravity = getPlayerGravity();
         player.gravity = player.baseGravity;
         player.speed = getPlayerSpeed();

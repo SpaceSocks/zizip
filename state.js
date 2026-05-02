@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-52';
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-52';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-53';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-53';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({
@@ -396,6 +396,7 @@ export function recordRunReplaySample(sample) {
         facing: sample.facing < 0 ? -1 : 1,
         animationState: sanitizeReplayAnimationState(sample.animationState),
         animationFrame: finiteReplayInteger(sample.animationFrame, 0, 0, 6),
+        tumbleAngle: Math.round(finiteReplayNumber(sample.tumbleAngle, 0, -Math.PI * 4, Math.PI * 4) * 1000) / 1000,
         cameraDrop: Math.round((sample.cameraDrop || 0) * 10) / 10,
         groundedPlatformId: Number.isFinite(sample.groundedPlatformId) ? sample.groundedPlatformId : null,
         groundedOffsetRatio: Number.isFinite(sample.groundedOffsetRatio)
@@ -558,6 +559,7 @@ function getReplaySamples(replay) {
             facing: firstDefined(sample.facing, sample.f, 1) < 0 ? -1 : 1,
             animationState: sanitizeReplayAnimationState(firstDefined(sample.animationState, sample.z)),
             animationFrame: finiteReplayInteger(firstDefined(sample.animationFrame, sample.r), 0, 0, 6),
+            tumbleAngle: finiteReplayNumber(firstDefined(sample.tumbleAngle, sample.u), 0, -Math.PI * 4, Math.PI * 4),
             visible: visibleValue === undefined ? true : visibleValue !== 0 && visibleValue !== false,
             cameraDrop: finiteReplayNumber(firstDefined(sample.cameraDrop, sample.c), 0, -100000, 100000),
             groundedPlatformId: firstDefined(sample.groundedPlatformId, sample.g, null),
@@ -685,6 +687,7 @@ function compactReplayForStorage(replay) {
                 f: sample.facing < 0 ? -1 : 1,
                 z: sanitizeReplayAnimationState(sample.animationState),
                 r: finiteReplayInteger(sample.animationFrame, 0, 0, 6),
+                u: Math.round(finiteReplayNumber(sample.tumbleAngle, 0, -Math.PI * 4, Math.PI * 4) * 1000) / 1000,
                 v: sample.visible === false ? 0 : 1,
                 c: Math.round((sample.cameraDrop || 0) * 10) / 10,
                 g: Number.isFinite(sample.groundedPlatformId) ? sample.groundedPlatformId : -1,
@@ -832,6 +835,7 @@ export function getReplaySampleAt(timeMs) {
     const facing = pickDiscreteReplayValue(a, b, timeMs, 'facing', 1, 36) < 0 ? -1 : 1;
     const animationState = pickDiscreteReplayValue(a, b, timeMs, 'animationState', 'idle', 36);
     const animationFrame = pickDiscreteReplayValue(a, b, timeMs, 'animationFrame', 0, 36);
+    const tumbleAngle = (a.tumbleAngle || 0) + ((b.tumbleAngle || 0) - (a.tumbleAngle || 0)) * t;
     return {
         time: timeMs,
         height: a.height + (b.height - a.height) * t,
@@ -846,7 +850,8 @@ export function getReplaySampleAt(timeMs) {
         visible,
         facing,
         animationState,
-        animationFrame
+        animationFrame,
+        tumbleAngle
     };
 }
 

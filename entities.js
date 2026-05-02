@@ -5,7 +5,7 @@
         PLATFORM_BASE_WIDTH, PLATFORM_HEIGHT, PLATFORM_MIDDLE_THRESHOLD,
         MOVING_PLATFORM_SPEED,
         PLATFORM_FLASH_INTERVAL_MAX
-    } from './constants.js?v=mobile-portrait-52';
+    } from './constants.js?v=mobile-portrait-53';
 
     // --- Player Definition ---
     export const player = {
@@ -32,6 +32,9 @@
         isDashing: false,
         lastDashTime: 0,
         facing: 1,
+        fallTumbleTime: 0,
+        tumbleActive: false,
+        tumbleAngle: 0,
         groundedOnPlatform: null // <<< NEW: Reference to the platform player is on
     };
 
