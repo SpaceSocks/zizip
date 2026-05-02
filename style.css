@@ -189,7 +189,7 @@ body.game-screen-active {
 .controller-toast {
     position: fixed;
     left: calc(var(--app-left) + (var(--app-width) / 2));
-    top: calc(var(--app-top) + max(18px, env(safe-area-inset-top)));
+    bottom: calc(max(18px, env(safe-area-inset-bottom)) + 18px);
     z-index: 70;
     max-width: min(86vw, 520px);
     padding: 10px 16px;
@@ -204,7 +204,7 @@ body.game-screen-active {
     text-align: center;
     pointer-events: none;
     opacity: 0;
-    transform: translate(-50%, -10px);
+    transform: translate(-50%, 12px);
     transition: opacity 160ms ease, transform 160ms ease;
 }
 
