@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-79';
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-79';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-80';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-80';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({
@@ -58,7 +58,7 @@ const BEST_RUN_REPLAY_KEY = 'zipzip_bestRunReplay';
 const GHOST_ENABLED_KEY = 'zipzip_bestRunGhostEnabled';
 const REPLAY_SAMPLE_INTERVAL_MS = 33;
 const MAX_REPLAY_SAMPLES = 9000;
-const MAX_STORED_REPLAY_SAMPLES = 4800;
+const MAX_STORED_REPLAY_SAMPLES = 1800;
 const MAX_STORED_REPLAY_PLATFORMS = 1200;
 const MAX_STORED_REPLAY_EVENTS = 500;
 const MAX_REPLAY_READ_SAMPLES = 9000;
@@ -764,6 +764,15 @@ function sanitizeReplayPlatformSnapshot(snapshot) {
 }
 
 function decodeReplayPlatformSnapshots(value, maxSnapshots = 16) {
+    if (typeof value === 'string') {
+        return value
+            .split(';')
+            .slice(0, maxSnapshots)
+            .map(part => part.split(',').map(Number))
+            .map(sanitizeReplayPlatformSnapshot)
+            .filter(snapshot => snapshot.id >= 0);
+    }
+
     if (!Array.isArray(value)) return [];
 
     if (value.every(item => typeof item === 'number')) {
@@ -781,6 +790,21 @@ function decodeReplayPlatformSnapshots(value, maxSnapshots = 16) {
     return normalizeReplayCollection(value, maxSnapshots)
         .map(sanitizeReplayPlatformSnapshot)
         .filter(snapshot => snapshot.id >= 0);
+}
+
+function encodeReplayPlatformSnapshots(snapshots) {
+    if (!Array.isArray(snapshots)) return '';
+
+    return snapshots
+        .slice(0, 16)
+        .map(sanitizeReplayPlatformSnapshot)
+        .filter(snapshot => snapshot.id >= 0)
+        .map(snapshot => [
+            snapshot.id,
+            Math.round(snapshot.x * 10) / 10,
+            Math.round(snapshot.y * 10) / 10
+        ].join(','))
+        .join(';');
 }
 
 function getReplaySamples(replay) {
@@ -939,18 +963,8 @@ function compactReplayForStorage(replay) {
                     ? Math.max(-1, Math.min(2, Math.round(sample.groundedOffsetRatio * 1000) / 1000))
                     : null
             };
-            const platformSnapshots = Array.isArray(sample.platformSnapshots)
-                ? sample.platformSnapshots.slice(0, 16).flatMap(snapshot => {
-                    const safeSnapshot = sanitizeReplayPlatformSnapshot(snapshot);
-                    if (safeSnapshot.id < 0) return [];
-                    return [
-                        safeSnapshot.id,
-                        Math.round(safeSnapshot.x * 10) / 10,
-                        Math.round(safeSnapshot.y * 10) / 10
-                    ];
-                })
-                : [];
-            if (platformSnapshots.length > 0) {
+            const platformSnapshots = encodeReplayPlatformSnapshots(sample.platformSnapshots);
+            if (platformSnapshots) {
                 compactSample.p = platformSnapshots;
             }
             return compactSample;
@@ -1700,13 +1714,20 @@ function hydrateLeaderboardReplaysFromLocal(entries) {
 
     return entries.map(entry => {
         if (hasReplayData(entry.replay)) return entry;
-        const localReplayEntry = localEntries.find(localEntry =>
-            hasReplayData(localEntry.replay) &&
-            String(localEntry.displayName || '').toLowerCase() === String(entry.displayName || '').toLowerCase() &&
+        const matchingLocalReplays = localEntries
+            .filter(localEntry =>
+                hasReplayData(localEntry.replay) &&
+                String(localEntry.displayName || '').toLowerCase() === String(entry.displayName || '').toLowerCase()
+            )
+            .sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+        const localReplayEntry = matchingLocalReplays.find(localEntry =>
             Number(localEntry.score || 0) === Number(entry.score || 0) &&
-            Number(localEntry.maxHeight || 0) === Number(entry.maxHeight || 0) &&
+            Math.abs(Number(localEntry.maxHeight || 0) - Number(entry.maxHeight || 0)) < 1 &&
             String(localEntry.time || '') === String(entry.time || '')
-        );
+        ) || matchingLocalReplays.find(localEntry =>
+            Number(localEntry.score || 0) === Number(entry.score || 0) &&
+            Math.abs(Number(localEntry.maxHeight || 0) - Number(entry.maxHeight || 0)) < 1
+        ) || matchingLocalReplays[0];
 
         return localReplayEntry ? { ...entry, replay: localReplayEntry.replay } : entry;
     });

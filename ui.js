@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-79';
-import * as audio from './audio.js?v=mobile-portrait-79'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-80';
+import * as audio from './audio.js?v=mobile-portrait-80'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-79';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-80';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-79';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-80';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
