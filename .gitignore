@@ -1,3 +1,4 @@
 cloudflared-game*.log
 cloudflared-game.yml
 pet-runs/
+.deploy/
