@@ -42,7 +42,7 @@ scp (Join-Path $PSScriptRoot "nginx-cosmiczip.net.conf") "${remote}:/tmp/nginx-c
 scp (Join-Path $PSScriptRoot "setup-vultr-nginx.sh") "${remote}:/tmp/setup-vultr-nginx.sh"
 scp $packagePath "${remote}:/tmp/cosmiczip-site.zip"
 
-ssh $remote "mkdir -p /tmp/cosmiczip-site $RemotePath && rm -rf /tmp/cosmiczip-site/* && unzip -q -o /tmp/cosmiczip-site.zip -d /tmp/cosmiczip-site && rsync -a --delete /tmp/cosmiczip-site/ $RemotePath/ && chown -R www-data:www-data /var/www/cosmiczip"
+ssh $remote "command -v unzip >/dev/null 2>&1 || (apt-get update && apt-get install -y unzip rsync); command -v rsync >/dev/null 2>&1 || apt-get install -y rsync; mkdir -p /tmp/cosmiczip-site $RemotePath && rm -rf /tmp/cosmiczip-site/* && unzip -q -o /tmp/cosmiczip-site.zip -d /tmp/cosmiczip-site && rsync -a --delete /tmp/cosmiczip-site/ $RemotePath/ && chown -R www-data:www-data /var/www/cosmiczip"
 
 Write-Host "Uploaded Cosmic Zip to ${remote}:$RemotePath"
 Write-Host "If this is first setup, run on the server:"
