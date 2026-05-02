@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-75';
-import * as audio from './audio.js?v=mobile-portrait-75'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-76';
+import * as audio from './audio.js?v=mobile-portrait-76'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-75';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-76';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-75';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-76';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -543,6 +543,19 @@ function isValidAlias(alias) {
     return alias.length >= 1 && alias.length <= 15;
 }
 
+function withTimeout(promise, timeoutMs, code = 'timeout') {
+    let timer;
+    const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+            const error = new Error(code);
+            error.code = code;
+            reject(error);
+        }, timeoutMs);
+    });
+
+    return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+}
+
 function requiresManualAlias(user) {
     return Array.isArray(user?.providerData) &&
         user.providerData.some(provider => ['google.com', 'apple.com'].includes(provider?.providerId));
@@ -591,7 +604,11 @@ async function loadSavedGameAlias(user) {
     if (!user?.uid) return '';
     try {
         const { db, doc, getDoc } = await getProfileApi();
-        const profileSnap = await getDoc(doc(db, PLAYER_PROFILES_COLLECTION, user.uid));
+        const profileSnap = await withTimeout(
+            getDoc(doc(db, PLAYER_PROFILES_COLLECTION, user.uid)),
+            8000,
+            'profile-load-timeout'
+        );
         const alias = cleanAlias(profileSnap.exists() ? profileSnap.data()?.alias : '');
         return isValidAlias(alias) ? alias : '';
     } catch (error) {
@@ -608,7 +625,7 @@ async function saveGameAlias(user, alias) {
 
     const { db, doc, getDoc, setDoc, serverTimestamp } = await getProfileApi();
     const profileRef = doc(db, PLAYER_PROFILES_COLLECTION, user.uid);
-    const existingProfile = await getDoc(profileRef);
+    const existingProfile = await withTimeout(getDoc(profileRef), 8000, 'profile-check-timeout');
     const payload = {
         alias: cleanedAlias,
         updatedAt: serverTimestamp()
@@ -618,7 +635,7 @@ async function saveGameAlias(user, alias) {
         payload.createdAt = serverTimestamp();
     }
 
-    await setDoc(profileRef, payload, { merge: true });
+    await withTimeout(setDoc(profileRef, payload, { merge: true }), 10000, 'profile-save-timeout');
 
     try {
         const { updateProfile } = await getAuthApi();
@@ -688,7 +705,7 @@ function clearPendingRedirectProvider() {
     sessionStorage.removeItem('zipzip_googleRedirectPending');
 }
 
-async function waitForRedirectAuthUser(auth, onAuthStateChanged, timeoutMs = 3500) {
+async function waitForRedirectAuthUser(auth, onAuthStateChanged, timeoutMs = 12000) {
     if (auth.currentUser) return auth.currentUser;
 
     return new Promise((resolve) => {
@@ -709,6 +726,7 @@ async function waitForRedirectAuthUser(auth, onAuthStateChanged, timeoutMs = 350
 }
 
 async function prepareOnlinePlayerForUser(user, successMessage = '') {
+    infoText.textContent = 'Loading online profile...';
     let gameAlias;
     try {
         gameAlias = await resolveGameAliasForUser(user, googleAliasInput?.value || aliasInput?.value || '');
@@ -1277,6 +1295,13 @@ function getFirebaseAuthErrorMessage(error) {
             return 'That email already uses another sign-in method. Log in with the original method first.';
         case 'auth/network-request-failed':
             return 'Network error. Check connection.';
+        case 'provider-redirect-timeout':
+            return 'Sign-in took too long to return. Try again in Safari/Chrome, or use another sign-in method.';
+        case 'profile-load-timeout':
+            return 'Signed in, but profile loading timed out. Try again.';
+        case 'profile-check-timeout':
+        case 'profile-save-timeout':
+            return 'Signed in, but saving your alias timed out. Try again.';
         case 'auth/too-many-requests':
             return 'Too many attempts. Wait a bit, then resend the reset email.';
         case 'auth/invalid-continue-uri':
@@ -1605,7 +1630,11 @@ async function handleGoogleRedirectResult() {
     try {
         const { auth, getRedirectResult, onAuthStateChanged } = await getAuthApi();
         infoText.textContent = `Finishing ${providerLabel} sign-in...`;
-        const result = await getRedirectResult(auth);
+        const result = await withTimeout(
+            getRedirectResult(auth),
+            12000,
+            'provider-redirect-timeout'
+        );
         const redirectUser = result?.user || await waitForRedirectAuthUser(auth, onAuthStateChanged);
         clearPendingRedirectProvider();
 
@@ -1614,12 +1643,27 @@ async function handleGoogleRedirectResult() {
             authButton.disabled = true;
             await prepareOnlinePlayerForUser(redirectUser, `${providerLabel} sign-in successful! Press Play Online when ready.`);
         } else {
+            infoText.textContent = `${providerLabel} sign-in did not finish. Try ${providerLabel} again, or use another sign-in method.`;
             authButton.disabled = false;
             setProviderSignInButtonsDisabled(false);
         }
     } catch (error) {
         console.error(`${providerLabel} redirect result error:`, error);
         clearPendingRedirectProvider();
+        if (error?.code === 'provider-redirect-timeout') {
+            try {
+                const { auth, onAuthStateChanged } = await getAuthApi();
+                const fallbackUser = await waitForRedirectAuthUser(auth, onAuthStateChanged, 5000);
+                if (fallbackUser) {
+                    setProviderSignInButtonsDisabled(true);
+                    authButton.disabled = true;
+                    await prepareOnlinePlayerForUser(fallbackUser, `${providerLabel} sign-in successful! Press Play Online when ready.`);
+                    return;
+                }
+            } catch (fallbackError) {
+                console.warn(`${providerLabel} redirect fallback check failed.`, fallbackError);
+            }
+        }
         infoText.textContent = getFirebaseAuthErrorMessage(error) || `${providerLabel} sign-in did not finish.`;
         authButton.disabled = false;
         setProviderSignInButtonsDisabled(false);

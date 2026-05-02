@@ -1,10 +1,10 @@
 // This file will handle keyboard and gamepad input 
-import * as state from './state.js?v=mobile-portrait-75';
-import * as audio from './audio.js?v=mobile-portrait-75';
-import * as ui from './ui.js?v=mobile-portrait-75';
-import { player } from './entities.js?v=mobile-portrait-75';
-import { AXIS_DEADZONE, PLAYER_JUMP_POWER } from './constants.js?v=mobile-portrait-75';
-import { getPlatforms } from './state.js?v=mobile-portrait-75'; // Import getPlatforms
+import * as state from './state.js?v=mobile-portrait-76';
+import * as audio from './audio.js?v=mobile-portrait-76';
+import * as ui from './ui.js?v=mobile-portrait-76';
+import { player } from './entities.js?v=mobile-portrait-76';
+import { AXIS_DEADZONE, PLAYER_JUMP_POWER } from './constants.js?v=mobile-portrait-76';
+import { getPlatforms } from './state.js?v=mobile-portrait-76'; // Import getPlatforms
 
 // --- Input State (shared within this module) ---
 export const keys = {
