@@ -1,9 +1,9 @@
-import * as state from './state.js';
-import * as audio from './audio.js'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-29';
+import * as audio from './audio.js?v=mobile-portrait-29'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-29';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-29';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -38,12 +38,30 @@ const localLeaderboardButton = document.getElementById('localLeaderboardButton')
 const globalLeaderboardButton = document.getElementById('globalLeaderboardButton');
 const menuLeaderboardStatus = document.getElementById('menuLeaderboardStatus');
 const menuLeaderboardList = document.getElementById('menuLeaderboardList');
+const gameOverLeaderboardPanel = document.getElementById('gameOverLeaderboardPanel');
+const gameOverLocalLeaderboardButton = document.getElementById('gameOverLocalLeaderboardButton');
+const gameOverGlobalLeaderboardButton = document.getElementById('gameOverGlobalLeaderboardButton');
+const gameOverLeaderboardStatus = document.getElementById('gameOverLeaderboardStatus');
+const gameOverLeaderboardList = document.getElementById('gameOverLeaderboardList');
+const gameOverLeaderboardRefreshButton = document.getElementById('gameOverLeaderboardRefreshButton');
 const optionsMenu = document.getElementById('optionsMenu');     // NEW
 const optionsBackButton = document.getElementById('optionsBackButton'); // NEW
+const aboutButton = document.getElementById('aboutButton');
+const aboutPanel = document.getElementById('aboutPanel');
+const aboutCloseButton = document.getElementById('aboutCloseButton');
+const appVersionLabel = document.getElementById('appVersionLabel');
 const musicVolumeSlider = document.getElementById('musicVolumeSlider'); // NEW
 const musicVolumeValue = document.getElementById('musicVolumeValue');   // NEW
 const sfxVolumeSlider = document.getElementById('sfxVolumeSlider');     // NEW
 const sfxVolumeValue = document.getElementById('sfxVolumeValue');       // NEW
+const moveControlSizeSlider = document.getElementById('moveControlSizeSlider');
+const moveControlSizeValue = document.getElementById('moveControlSizeValue');
+const jumpControlSizeSlider = document.getElementById('jumpControlSizeSlider');
+const jumpControlSizeValue = document.getElementById('jumpControlSizeValue');
+const moveControlTransparencySlider = document.getElementById('moveControlTransparencySlider');
+const moveControlTransparencyValue = document.getElementById('moveControlTransparencyValue');
+const jumpControlTransparencySlider = document.getElementById('jumpControlTransparencySlider');
+const jumpControlTransparencyValue = document.getElementById('jumpControlTransparencyValue');
 const bestGhostToggle = document.getElementById('bestGhostToggle');
 const bestGhostValue = document.getElementById('bestGhostValue');
 const replayControls = document.getElementById('replayControls');
@@ -59,6 +77,23 @@ const replayTimeLabel = document.getElementById('replayTimeLabel');
 const LAST_EMAIL_KEY = 'zipzip_lastEmail';
 const SAVED_PASSWORD_KEY = 'zipzip_savedPassword'; // !! INSECURE !!
 const LOCAL_ALIAS_KEY = 'zipzip_localAlias';
+const MOBILE_CONTROL_PREFS = {
+    moveSize: 'zipzip_mobileMoveControlSize',
+    jumpSize: 'zipzip_mobileJumpControlSize',
+    moveTransparency: 'zipzip_mobileMoveControlTransparency',
+    jumpTransparency: 'zipzip_mobileJumpControlTransparency'
+};
+const MOBILE_CONTROL_DEFAULT_MIGRATION_KEY = 'zipzip_mobileControlDefaults_20260502_transparency73';
+const MOBILE_CONTROL_DEFAULTS = {
+    moveSize: 200,
+    jumpSize: 100,
+    moveTransparency: 73,
+    jumpTransparency: 73
+};
+const MOBILE_MOVE_BASE_SIZE = 72;
+const MOBILE_MOVE_BASE_KNOB_SIZE = 34;
+const MOBILE_JUMP_BASE_SIZE = 72;
+const APP_VERSION = '0.1.0-alpha';
 
 // UI State
 let isRegisterMode = false; // Start in Login mode
@@ -70,6 +105,8 @@ let loginStars = [];
 let loginStarAnimationId = null;
 let replayReturnTarget = 'gameover';
 let menuLeaderboardSource = 'local';
+let gameOverLeaderboardSource = 'local';
+let gameOverLeaderboardRequestId = 0;
 
 const LOGIN_STAR_VARIANTS = [
     { count: 340, color: '#253039', alphaMin: 0.10, alphaMax: 0.20, sizeMin: 0.98, sizeMax: 1.5, speedMin: 0.030, speedMax: 0.066 },
@@ -78,17 +115,21 @@ const LOGIN_STAR_VARIANTS = [
     { count: 54, color: '#8fd3ff', alphaMin: 0.34, alphaMax: 0.62, sizeMin: 1.13, sizeMax: 1.95, speedMin: 0.120, speedMax: 0.204 },
     { count: 22, color: '#ffffff', alphaMin: 0.62, alphaMax: 0.92, sizeMin: 1.2, sizeMax: 2.18, speedMin: 0.180, speedMax: 0.285 }
 ];
+const LOGIN_STAR_SIZE_SCALE = 2;
+const LOGIN_WHITE_STAR_SPEED_SCALE = 3;
 
 function randomBetween(min, max) {
     return Math.random() * (max - min) + min;
 }
 
 function createLoginStar(variant, startAtRight = false) {
+    const size = Math.max(2, Math.round(randomBetween(variant.sizeMin, variant.sizeMax) * LOGIN_STAR_SIZE_SCALE));
+    const speedScale = variant.color === '#ffffff' ? LOGIN_WHITE_STAR_SPEED_SCALE : 1;
     return {
-        x: startAtRight ? loginStarCanvas.width + variant.sizeMax : Math.random() * loginStarCanvas.width,
+        x: startAtRight ? loginStarCanvas.width + size : Math.random() * loginStarCanvas.width,
         y: Math.random() * loginStarCanvas.height,
-        size: randomBetween(variant.sizeMin, variant.sizeMax),
-        speed: randomBetween(variant.speedMin, variant.speedMax),
+        size,
+        speed: randomBetween(variant.speedMin, variant.speedMax) * speedScale,
         alpha: randomBetween(variant.alphaMin, variant.alphaMax),
         color: variant.color,
         variant
@@ -97,8 +138,9 @@ function createLoginStar(variant, startAtRight = false) {
 
 function resizeLoginStars() {
     if (!loginStarCanvas) return;
-    loginStarCanvas.width = window.innerWidth;
-    loginStarCanvas.height = window.innerHeight;
+    const viewport = window.visualViewport;
+    loginStarCanvas.width = Math.max(1, Math.round(viewport?.width || document.documentElement.clientWidth || window.innerWidth));
+    loginStarCanvas.height = Math.max(1, Math.round(viewport?.height || document.documentElement.clientHeight || window.innerHeight));
     loginStars = LOGIN_STAR_VARIANTS.flatMap(variant =>
         Array.from({ length: variant.count }, () => createLoginStar(variant))
     );
@@ -116,7 +158,7 @@ function drawLoginStars() {
 
         loginStarCtx.globalAlpha = star.alpha;
         loginStarCtx.fillStyle = star.color;
-        loginStarCtx.fillRect(star.x, star.y, star.size, star.size);
+        loginStarCtx.fillRect(Math.round(star.x), Math.round(star.y), star.size, star.size);
     });
     loginStarCtx.globalAlpha = 1;
 
@@ -126,7 +168,10 @@ function drawLoginStars() {
 function showLoginStarfield() {
     if (!loginStarCanvas) return;
     loginStarCanvas.style.display = 'block';
-    if (loginStars.length === 0 || loginStarCanvas.width !== window.innerWidth || loginStarCanvas.height !== window.innerHeight) {
+    const viewport = window.visualViewport;
+    const width = Math.max(1, Math.round(viewport?.width || document.documentElement.clientWidth || window.innerWidth));
+    const height = Math.max(1, Math.round(viewport?.height || document.documentElement.clientHeight || window.innerHeight));
+    if (loginStars.length === 0 || loginStarCanvas.width !== width || loginStarCanvas.height !== height) {
         resizeLoginStars();
     }
     if (!loginStarAnimationId) {
@@ -143,6 +188,68 @@ function hideLoginStarfield() {
     }
 }
 
+function readControlSetting(key, fallback, min, max) {
+    const rawValue = localStorage.getItem(key);
+    if (rawValue === null || rawValue === '') return fallback;
+    const saved = Number(rawValue);
+    if (!Number.isFinite(saved)) return fallback;
+    return Math.max(min, Math.min(max, saved));
+}
+
+function migrateMobileControlDefaults() {
+    if (localStorage.getItem(MOBILE_CONTROL_DEFAULT_MIGRATION_KEY) === 'done') return;
+
+    [
+        [MOBILE_CONTROL_PREFS.moveTransparency, MOBILE_CONTROL_DEFAULTS.moveTransparency],
+        [MOBILE_CONTROL_PREFS.jumpTransparency, MOBILE_CONTROL_DEFAULTS.jumpTransparency]
+    ].forEach(([key, defaultValue]) => {
+        const savedValue = localStorage.getItem(key);
+        if (savedValue === null || savedValue === '50') {
+            localStorage.setItem(key, String(defaultValue));
+        }
+    });
+
+    localStorage.setItem(MOBILE_CONTROL_DEFAULT_MIGRATION_KEY, 'done');
+}
+
+function getMobileControlSettings() {
+    return {
+        moveSize: readControlSetting(MOBILE_CONTROL_PREFS.moveSize, MOBILE_CONTROL_DEFAULTS.moveSize, 50, 240),
+        jumpSize: readControlSetting(MOBILE_CONTROL_PREFS.jumpSize, MOBILE_CONTROL_DEFAULTS.jumpSize, 50, 180),
+        moveTransparency: readControlSetting(MOBILE_CONTROL_PREFS.moveTransparency, MOBILE_CONTROL_DEFAULTS.moveTransparency, 0, 100),
+        jumpTransparency: readControlSetting(MOBILE_CONTROL_PREFS.jumpTransparency, MOBILE_CONTROL_DEFAULTS.jumpTransparency, 0, 100)
+    };
+}
+
+function applyMobileControlSettings(settings = getMobileControlSettings()) {
+    const root = document.documentElement;
+    const moveScale = settings.moveSize / 100;
+    const jumpScale = settings.jumpSize / 100;
+    root.style.setProperty('--move-stick-size', `${Math.round(MOBILE_MOVE_BASE_SIZE * moveScale)}px`);
+    root.style.setProperty('--move-knob-size', `${Math.round(MOBILE_MOVE_BASE_KNOB_SIZE * moveScale)}px`);
+    root.style.setProperty('--jump-button-size', `${Math.round(MOBILE_JUMP_BASE_SIZE * jumpScale)}px`);
+    root.style.setProperty('--move-control-opacity', `${1 - settings.moveTransparency / 100}`);
+    root.style.setProperty('--jump-control-opacity', `${1 - settings.jumpTransparency / 100}`);
+}
+
+function syncMobileControlOptions(settings = getMobileControlSettings()) {
+    if (moveControlSizeSlider) moveControlSizeSlider.value = settings.moveSize;
+    if (moveControlSizeValue) moveControlSizeValue.textContent = `${settings.moveSize}%`;
+    if (jumpControlSizeSlider) jumpControlSizeSlider.value = settings.jumpSize;
+    if (jumpControlSizeValue) jumpControlSizeValue.textContent = `${settings.jumpSize}%`;
+    if (moveControlTransparencySlider) moveControlTransparencySlider.value = settings.moveTransparency;
+    if (moveControlTransparencyValue) moveControlTransparencyValue.textContent = `${settings.moveTransparency}%`;
+    if (jumpControlTransparencySlider) jumpControlTransparencySlider.value = settings.jumpTransparency;
+    if (jumpControlTransparencyValue) jumpControlTransparencyValue.textContent = `${settings.jumpTransparency}%`;
+}
+
+function setMobileControlSetting(prefKey, value) {
+    localStorage.setItem(prefKey, String(value));
+    const settings = getMobileControlSettings();
+    applyMobileControlSettings(settings);
+    syncMobileControlOptions(settings);
+}
+
 function hideLeaderboardPanel() {
     if (leaderboardPanel) leaderboardPanel.style.display = 'none';
 }
@@ -154,9 +261,9 @@ function makeLeaderboardCell(className, text) {
     return cell;
 }
 
-function renderMenuLeaderboard(entries = []) {
-    if (!menuLeaderboardList) return;
-    menuLeaderboardList.replaceChildren();
+function renderLeaderboard(entries = [], targetList = menuLeaderboardList, replayReturnTarget = 'menu') {
+    if (!targetList) return;
+    targetList.replaceChildren();
 
     const header = document.createElement('div');
     header.className = 'menu-leaderboard-row header';
@@ -168,7 +275,7 @@ function renderMenuLeaderboard(entries = []) {
         makeLeaderboardCell('time', 'Time'),
         makeLeaderboardCell('replay', 'Run')
     );
-    menuLeaderboardList.appendChild(header);
+    targetList.appendChild(header);
 
     entries.slice(0, 10).forEach((entry, index) => {
         const row = document.createElement('div');
@@ -180,23 +287,28 @@ function renderMenuLeaderboard(entries = []) {
         replayButton.textContent = hasReplay ? '▶' : '-';
         replayButton.title = hasReplay ? 'Watch replay' : 'No replay saved';
         replayButton.disabled = !hasReplay;
-        replayButton.addEventListener('click', () => startMenuReplay(entry));
+        replayButton.addEventListener('click', () => startLeaderboardReplay(entry, replayReturnTarget));
 
         row.append(
             makeLeaderboardCell('number', `${index + 1}.`),
             makeLeaderboardCell('name', (entry.displayName || 'Anon').toUpperCase()),
-            makeLeaderboardCell('metric', String(entry.score ?? 0)),
-            makeLeaderboardCell('metric', `${Math.round(entry.maxHeight || 0)} M`),
+            makeLeaderboardCell('metric score', String(entry.score ?? 0)),
+            makeLeaderboardCell('metric height', `${Math.round(entry.maxHeight || 0)} M`),
             makeLeaderboardCell('time', entry.time || '00:00'),
             replayButton
         );
-        menuLeaderboardList.appendChild(row);
+        targetList.appendChild(row);
     });
 }
 
 function updateLeaderboardSourceButtons() {
     localLeaderboardButton?.classList.toggle('active', menuLeaderboardSource === 'local');
     globalLeaderboardButton?.classList.toggle('active', menuLeaderboardSource === 'global');
+}
+
+function updateGameOverLeaderboardSourceButtons() {
+    gameOverLocalLeaderboardButton?.classList.toggle('active', gameOverLeaderboardSource === 'local');
+    gameOverGlobalLeaderboardButton?.classList.toggle('active', gameOverLeaderboardSource === 'global');
 }
 
 async function showLeaderboardPanel(force = true, source = menuLeaderboardSource || state.getActiveLeaderboardSource()) {
@@ -211,26 +323,73 @@ async function showLeaderboardPanel(force = true, source = menuLeaderboardSource
 
     try {
         const entries = await state.getLeaderboard(menuLeaderboardSource);
-        renderMenuLeaderboard(entries);
+        renderLeaderboard(entries, menuLeaderboardList);
         menuLeaderboardStatus.textContent = entries.length
             ? `${menuLeaderboardSource === 'global' ? 'Global' : 'Local'} top runs`
             : `No ${menuLeaderboardSource === 'global' ? 'global' : 'local'} runs yet.`;
     } catch (error) {
         console.warn("Could not load menu leaderboard.", error);
-        menuLeaderboardStatus.textContent = `Could not load ${menuLeaderboardSource} leaderboard.`;
+        menuLeaderboardStatus.textContent = error?.code === 'global-auth-required'
+            ? 'Sign in to view the global leaderboard.'
+            : `Could not load ${menuLeaderboardSource} leaderboard.`;
     }
 }
 
-function startMenuReplay(entry) {
+export function showGameOverLeaderboardLoading(source = state.getActiveLeaderboardSource()) {
+    if (!gameOverLeaderboardPanel || !gameOverLeaderboardStatus || !gameOverLeaderboardList) return;
+    gameOverLeaderboardSource = source === 'global' ? 'global' : 'local';
+    updateGameOverLeaderboardSourceButtons();
+    gameOverLeaderboardPanel.style.display = 'flex';
+    gameOverLeaderboardStatus.textContent = `Loading ${gameOverLeaderboardSource === 'global' ? 'global' : 'local'} leaderboard...`;
+    gameOverLeaderboardList.replaceChildren();
+}
+
+export async function showGameOverLeaderboard(force = true, source = gameOverLeaderboardSource || state.getActiveLeaderboardSource()) {
+    if (!gameOverLeaderboardPanel || !gameOverLeaderboardStatus || !gameOverLeaderboardList) return;
+
+    const requestId = ++gameOverLeaderboardRequestId;
+    gameOverLeaderboardSource = source === 'global' ? 'global' : 'local';
+    updateGameOverLeaderboardSourceButtons();
+    gameOverLeaderboardPanel.style.display = 'flex';
+    gameOverLeaderboardStatus.textContent = `Loading ${gameOverLeaderboardSource === 'global' ? 'global' : 'local'} leaderboard...`;
+    gameOverLeaderboardList.replaceChildren();
+    if (force) state.clearLeaderboardCache();
+
+    try {
+        const entries = await state.getLeaderboard(gameOverLeaderboardSource);
+        if (requestId !== gameOverLeaderboardRequestId) return;
+        renderLeaderboard(entries, gameOverLeaderboardList, 'gameover');
+        gameOverLeaderboardStatus.textContent = entries.length
+            ? `${gameOverLeaderboardSource === 'global' ? 'Global' : 'Local'} top runs`
+            : `No ${gameOverLeaderboardSource === 'global' ? 'global' : 'local'} runs yet.`;
+    } catch (error) {
+        if (requestId !== gameOverLeaderboardRequestId) return;
+        console.warn("Could not load game-over leaderboard.", error);
+        gameOverLeaderboardStatus.textContent = error?.code === 'global-auth-required'
+            ? 'Sign in to view the global leaderboard.'
+            : `Could not load ${gameOverLeaderboardSource} leaderboard.`;
+    }
+}
+
+function hideGameOverLeaderboard() {
+    gameOverLeaderboardRequestId++;
+    if (gameOverLeaderboardPanel) gameOverLeaderboardPanel.style.display = 'none';
+}
+
+function startLeaderboardReplay(entry, returnTarget = 'menu') {
     if (!state.startReplay(entry)) return;
     audio.initializeAudio();
-    hideLeaderboardPanel();
-    loginScreen.style.display = 'none';
-    hideLoginStarfield();
+    if (returnTarget === 'menu') {
+        hideLeaderboardPanel();
+        loginScreen.style.display = 'none';
+        hideLoginStarfield();
+    } else {
+        hideGameOverControls();
+    }
     const canvasEl = document.getElementById('gameCanvas');
     if (canvasEl) canvasEl.style.display = 'block';
     ensureGameLoop();
-    showReplayControls('menu');
+    showReplayControls(returnTarget);
 }
 
 async function getAuthApi() {
@@ -257,9 +416,10 @@ const FOCUSED_OPTIONS_ITEM_CLASS = 'focused'; // Class for option items (sliders
 const FOCUSED_BUTTON_CLASS = 'focused-button'; // Existing class for buttons
 
 export function setupOptionsFocus() {
-    // Get all sliders and the back button
     const sliders = Array.from(optionsMenu.querySelectorAll('.options-item'));
-    optionsFocusableItems = [...sliders, optionsBackButton];
+    const buttons = [aboutButton, ...(aboutPanel?.style.display === 'none' ? [] : [aboutCloseButton]), optionsBackButton]
+        .filter(Boolean);
+    optionsFocusableItems = [...sliders, ...buttons];
     currentOptionsFocusIndex = 0; // Default focus to the first slider
     updateOptionsMenuFocus();
 }
@@ -375,6 +535,11 @@ export function activateFocusedGameOverButton() {
 // --- UI Control ---
 export function showLoginScreen() {
     loginScreen.style.display = 'flex';
+    loginScreen.scrollTop = 0;
+    requestAnimationFrame(() => {
+        loginScreen.scrollTop = 0;
+        if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+    });
     showLoginStarfield();
     const canvasEl = document.getElementById('gameCanvas');
     if (canvasEl) canvasEl.style.display = 'none';
@@ -408,11 +573,12 @@ export function showGameOverControls() {
 
 export function hideGameOverControls() {
     if (gameOverControls) gameOverControls.style.display = 'none';
+    hideGameOverLeaderboard();
 }
 
 export function showReplayControls(returnTarget = 'gameover') {
     replayReturnTarget = returnTarget;
-    if (replayControls) replayControls.style.display = 'flex';
+    if (replayControls) replayControls.style.display = document.body.classList.contains('mobile-viewport') ? 'grid' : 'flex';
     hideGameOverControls();
     hideLeaderboardPanel();
     updateReplayControls();
@@ -435,6 +601,7 @@ export function exitReplay() {
     }
 
     showGameOverControls();
+    showGameOverLeaderboard(false, gameOverLeaderboardSource || state.getActiveLeaderboardSource());
     setupGameOverFocus();
 }
 
@@ -518,6 +685,7 @@ async function handleAuthClick() {
     }
 
     authButton.disabled = true;
+    requestMobileFullscreen();
     infoText.textContent = isRegisterMode ? 'Registering...' : 'Logging in...';
 
     try {
@@ -618,10 +786,39 @@ function getPasswordResetActionSettings() {
         return undefined;
     }
 
+    const host = window.location.hostname || '';
+    const isTemporaryTestHost =
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host === '::1' ||
+        host.endsWith('.trycloudflare.com');
+
+    if (isTemporaryTestHost) {
+        return undefined;
+    }
+
     return {
         url: `${window.location.origin}${window.location.pathname}`,
         handleCodeInApp: false
     };
+}
+
+async function sendPasswordResetEmailWithFallback(sendPasswordResetEmail, auth, email) {
+    const actionSettings = getPasswordResetActionSettings();
+    if (!actionSettings) {
+        await sendPasswordResetEmail(auth, email);
+        return;
+    }
+
+    try {
+        await sendPasswordResetEmail(auth, email, actionSettings);
+    } catch (error) {
+        if (error?.code !== 'auth/unauthorized-continue-uri' && error?.code !== 'auth/invalid-continue-uri') {
+            throw error;
+        }
+        console.warn("Password reset continue URL was rejected. Retrying with Firebase default reset link.", error);
+        await sendPasswordResetEmail(auth, email);
+    }
 }
 
 // NEW: Handle Password Reset Click
@@ -653,12 +850,7 @@ async function handlePasswordReset() {
             return;
         }
 
-        const actionSettings = getPasswordResetActionSettings();
-        if (actionSettings) {
-            await sendPasswordResetEmail(auth, email, actionSettings);
-        } else {
-            await sendPasswordResetEmail(auth, email);
-        }
+        await sendPasswordResetEmailWithFallback(sendPasswordResetEmail, auth, email);
 
         lastPasswordResetEmail = email;
         resetPasswordLink.textContent = 'Resend reset email';
@@ -680,6 +872,7 @@ async function handlePasswordReset() {
 
 function handleRetryClick() {
     console.log("Retry button clicked");
+    requestMobileFullscreen();
     hideGameOverControls();
     // Call startGameLogic FIRST - it handles resetting stats and setting the state
     startGameLogic();
@@ -711,6 +904,7 @@ function handleLocalPlayClick() {
     }
 
     localStorage.setItem(LOCAL_ALIAS_KEY, localAlias);
+    requestMobileFullscreen();
     audio.initializeAudio();
     state.setActiveLeaderboardSource('local');
     ensureLocalPlayIdentity(localAlias);
@@ -744,6 +938,8 @@ function handleQuitToMenuClick() {
 function showOptionsMenu(fromPause = false) {
     returnToPauseMenu = fromPause; // Remember where we came from
     if (optionsMenu) optionsMenu.style.display = 'block';
+    if (aboutPanel) aboutPanel.style.display = 'none';
+    if (appVersionLabel) appVersionLabel.textContent = APP_VERSION;
     if (fromPause) {
         if (pauseMenu) pauseMenu.style.display = 'none'; // Hide pause menu
     } else {
@@ -760,11 +956,44 @@ function showOptionsMenu(fromPause = false) {
         sfxVolumeSlider.value = currentSfxVol * 100;
         if (sfxVolumeValue) sfxVolumeValue.textContent = `${Math.round(currentSfxVol * 100)}%`;
     }
+    syncMobileControlOptions();
     if (bestGhostToggle) {
         bestGhostToggle.checked = state.isGhostEnabled();
         if (bestGhostValue) bestGhostValue.textContent = bestGhostToggle.checked ? 'On' : 'Off';
     }
     setupOptionsFocus(); // Initialize focus when shown
+}
+
+function showAboutPanel() {
+    if (!aboutPanel) return;
+    aboutPanel.style.display = 'block';
+    if (appVersionLabel) appVersionLabel.textContent = APP_VERSION;
+    setupOptionsFocus();
+}
+
+function hideAboutPanel() {
+    if (!aboutPanel) return;
+    aboutPanel.style.display = 'none';
+    setupOptionsFocus();
+}
+
+async function requestMobileFullscreen() {
+    const isMobileLike = document.body.classList.contains('mobile-viewport') ||
+        window.matchMedia?.('(pointer: coarse)').matches;
+    if (!isMobileLike) return false;
+    if (document.fullscreenElement || document.webkitFullscreenElement) return true;
+
+    const target = document.documentElement;
+    const requestFullscreen = target.requestFullscreen || target.webkitRequestFullscreen;
+    if (!requestFullscreen) return false;
+
+    try {
+        await requestFullscreen.call(target, { navigationUI: 'hide' });
+        return true;
+    } catch (error) {
+        console.info("Fullscreen request was blocked or unavailable in this browser.", error);
+        return false;
+    }
 }
 
 function hideOptionsMenu() {
@@ -860,6 +1089,7 @@ export function initializeUI() {
     if (!localPlayButton) console.error('localPlayButton not found during init!');
     if (!leaderboardButton) console.error('leaderboardButton not found!');
     if (!leaderboardPanel) console.error('leaderboardPanel not found!');
+    if (!gameOverLeaderboardPanel) console.error('gameOverLeaderboardPanel not found!');
     if (!resetPasswordLink) console.error('resetPasswordLink not found during init!'); // Add check
     if (!rememberPasswordCheckbox) console.error('rememberPasswordCheckbox not found!');
     if (!rememberGroup) console.error('rememberGroup div not found!');
@@ -873,6 +1103,10 @@ export function initializeUI() {
     if (!optionsButton) console.error('optionsButton not found!');
     if (!optionsMenu) console.error('optionsMenu not found!');
     if (!optionsBackButton) console.error('optionsBackButton not found!');
+    if (!aboutButton) console.error('aboutButton not found!');
+    if (!aboutPanel) console.error('aboutPanel not found!');
+    if (!aboutCloseButton) console.error('aboutCloseButton not found!');
+    if (!appVersionLabel) console.error('appVersionLabel not found!');
     if (!musicVolumeSlider) console.error('musicVolumeSlider not found!');
     if (!musicVolumeValue) console.error('musicVolumeValue not found!');
     if (!sfxVolumeSlider) console.error('sfxVolumeSlider not found!');
@@ -901,6 +1135,15 @@ export function initializeUI() {
     }
     if (globalLeaderboardButton) {
         globalLeaderboardButton.addEventListener('click', () => showLeaderboardPanel(true, 'global'));
+    }
+    if (gameOverLeaderboardRefreshButton) {
+        gameOverLeaderboardRefreshButton.addEventListener('click', () => showGameOverLeaderboard(true, gameOverLeaderboardSource));
+    }
+    if (gameOverLocalLeaderboardButton) {
+        gameOverLocalLeaderboardButton.addEventListener('click', () => showGameOverLeaderboard(true, 'local'));
+    }
+    if (gameOverGlobalLeaderboardButton) {
+        gameOverGlobalLeaderboardButton.addEventListener('click', () => showGameOverLeaderboard(true, 'global'));
     }
     toggleAuthLink.addEventListener('click', (e) => {
         e.preventDefault(); // Prevent page jump
@@ -952,13 +1195,23 @@ export function initializeUI() {
     if (optionsBackButton) {
         optionsBackButton.addEventListener('click', hideOptionsMenu);
     }
+    if (aboutButton) {
+        aboutButton.addEventListener('click', showAboutPanel);
+    }
+    if (aboutCloseButton) {
+        aboutCloseButton.addEventListener('click', hideAboutPanel);
+    }
 
     if (loginStarCanvas) {
         window.addEventListener('resize', resizeLoginStars);
+        window.addEventListener('orientationchange', () => setTimeout(resizeLoginStars, 80));
+        window.visualViewport?.addEventListener('resize', resizeLoginStars);
+        window.visualViewport?.addEventListener('scroll', resizeLoginStars);
     }
 
     if (musicVolumeSlider) {
         musicVolumeSlider.addEventListener('input', (e) => {
+            audio.initializeAudio();
             const volume = parseInt(e.target.value) / 100;
             audio.setMusicVolume(volume);
             if (musicVolumeValue) musicVolumeValue.textContent = `${e.target.value}%`;
@@ -967,11 +1220,36 @@ export function initializeUI() {
 
     if (sfxVolumeSlider) {
         sfxVolumeSlider.addEventListener('input', (e) => {
+            audio.initializeAudio();
             const volume = parseInt(e.target.value) / 100;
             audio.setSfxVolume(volume);
             if (sfxVolumeValue) sfxVolumeValue.textContent = `${e.target.value}%`;
             // Optionally play a sound effect here as feedback
             // audio.playLandingSound();
+        });
+    }
+
+    if (moveControlSizeSlider) {
+        moveControlSizeSlider.addEventListener('input', (e) => {
+            setMobileControlSetting(MOBILE_CONTROL_PREFS.moveSize, parseInt(e.target.value, 10));
+        });
+    }
+
+    if (jumpControlSizeSlider) {
+        jumpControlSizeSlider.addEventListener('input', (e) => {
+            setMobileControlSetting(MOBILE_CONTROL_PREFS.jumpSize, parseInt(e.target.value, 10));
+        });
+    }
+
+    if (moveControlTransparencySlider) {
+        moveControlTransparencySlider.addEventListener('input', (e) => {
+            setMobileControlSetting(MOBILE_CONTROL_PREFS.moveTransparency, parseInt(e.target.value, 10));
+        });
+    }
+
+    if (jumpControlTransparencySlider) {
+        jumpControlTransparencySlider.addEventListener('input', (e) => {
+            setMobileControlSetting(MOBILE_CONTROL_PREFS.jumpTransparency, parseInt(e.target.value, 10));
         });
     }
 
@@ -1032,6 +1310,9 @@ export function initializeUI() {
 
     // Load volume preferences when UI initializes
     audio.loadVolumePreferences();
+    migrateMobileControlDefaults();
+    applyMobileControlSettings();
+    syncMobileControlOptions();
 
     console.log("UI initialized.");
 }

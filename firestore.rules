@@ -1,0 +1,55 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function validLeaderboardShape() {
+      return request.resource.data.keys().hasOnly([
+          'userId',
+          'displayName',
+          'score',
+          'maxHeight',
+          'time',
+          'replay',
+          'timestamp',
+          'updatedAt'
+        ])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 24
+        && request.resource.data.score is number
+        && request.resource.data.score >= 0
+        && request.resource.data.score <= 1000000000
+        && request.resource.data.maxHeight is number
+        && request.resource.data.maxHeight >= 0
+        && request.resource.data.maxHeight <= 10000000
+        && request.resource.data.time is string
+        && request.resource.data.time.size() <= 24
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    match /leaderboard/{entryId} {
+      allow read: if true;
+
+      allow create: if signedIn()
+        && validLeaderboardShape()
+        && request.resource.data.timestamp == request.time;
+
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.timestamp == resource.data.timestamp
+        && validLeaderboardShape();
+
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -2,12 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Cosmic Zip">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#05070c">
     <title>Cosmic Zip</title>
     <!-- R64 Font -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&family=VT323&display=swap&family=Petit+Formal+Script&family=Petitet+Formal+Script" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=mobile-portrait-29">
     <link rel="icon" type="image/png" href="favicon.png?v=cosmic-zip-1">
+    <link rel="manifest" href="manifest.webmanifest?v=mobile-portrait-29">
     <!-- <script src="https://download.playfab.com/PlayFabClientApi.js"></script> -->
 </head>
 <body>
@@ -105,6 +111,21 @@
     <!-- Game Canvas (initially hidden) -->
     <canvas id="gameCanvas" style="display: none;"></canvas>
 
+    <div id="mobileControls" aria-label="Touch controls">
+        <button id="mobilePauseButton" class="touch-pause-button" type="button" aria-label="Pause menu">MENU</button>
+        <div id="moveStick" class="touch-stick" aria-label="Move">
+            <div id="moveStickKnob" class="touch-stick-knob"></div>
+        </div>
+        <button id="jumpButton" class="touch-jump-button" type="button" aria-label="Jump">JUMP</button>
+    </div>
+
+    <div id="landscapeBlocker" aria-hidden="true">
+        <div class="landscape-message">
+            <strong>Rotate phone upright</strong>
+            <span>Cosmic Zip is tuned for vertical play on phones.</span>
+        </div>
+    </div>
+
     <!-- Pause Menu (Initially Hidden) -->
     <div id="pauseMenu" class="centered-container" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 20;">
         <h1>PAUSED</h1>
@@ -118,25 +139,68 @@
     <!-- NEW Options Menu (Initially Hidden) -->
     <div id="optionsMenu" class="menu" style="display: none;">
         <h2>Options</h2>
+        <div class="options-section-title">Audio</div>
         <div class="options-item">
             <label for="musicVolumeSlider">Music Volume:</label>
             <input type="range" id="musicVolumeSlider" min="0" max="100" value="60">
             <span id="musicVolumeValue">60%</span>
         </div>
          <div class="options-item">
-            <label for="sfxVolumeSlider">SFX Volume:</label>
+            <label for="sfxVolumeSlider">Sound Effects Volume:</label>
             <input type="range" id="sfxVolumeSlider" min="0" max="100" value="60">
             <span id="sfxVolumeValue">60%</span>
         </div>
+        <div class="options-section-title">Touch Controls</div>
+        <div class="options-item mobile-control-option">
+            <label for="moveControlSizeSlider">Directional Control Size:</label>
+            <input type="range" id="moveControlSizeSlider" min="50" max="240" value="200">
+            <span id="moveControlSizeValue">200%</span>
+        </div>
+        <div class="options-item mobile-control-option">
+            <label for="jumpControlSizeSlider">Jump Button Size:</label>
+            <input type="range" id="jumpControlSizeSlider" min="50" max="180" value="100">
+            <span id="jumpControlSizeValue">100%</span>
+        </div>
+        <div class="options-item mobile-control-option">
+            <label for="moveControlTransparencySlider">Directional Control Transparency:</label>
+            <input type="range" id="moveControlTransparencySlider" min="0" max="100" value="73">
+            <span id="moveControlTransparencyValue">73%</span>
+        </div>
+        <div class="options-item mobile-control-option">
+            <label for="jumpControlTransparencySlider">Jump Button Transparency:</label>
+            <input type="range" id="jumpControlTransparencySlider" min="0" max="100" value="73">
+            <span id="jumpControlTransparencyValue">73%</span>
+        </div>
+        <div class="options-section-title">Gameplay</div>
         <div class="options-item toggle-option">
             <label for="bestGhostToggle">Best Ghost:</label>
             <input type="checkbox" id="bestGhostToggle" checked>
             <span id="bestGhostValue">On</span>
         </div>
-        <button id="optionsBackButton" class="menu-button game-button">Back</button>
+        <div class="options-section-title">About</div>
+        <button id="aboutButton" class="menu-button game-button options-action">About</button>
+        <div id="aboutPanel" class="about-panel" style="display: none;">
+            <h3>About Cosmic Zip</h3>
+            <p>Climb a collapsing starfield, land clean, chain jumps, and chase one more best run.</p>
+            <p>Created by Ryan Geidl</p>
+            <p>Version <span id="appVersionLabel">Alpha</span></p>
+            <button id="aboutCloseButton" class="menu-button game-button options-action">Close</button>
+        </div>
+        <button id="optionsBackButton" class="menu-button game-button options-action">Back</button>
     </div>
 
     <!-- Game Over Buttons (Initially Hidden) -->
+    <div id="gameOverLeaderboardPanel" class="game-over-leaderboard-panel" style="display: none;">
+        <h2>Leaderboard</h2>
+        <div class="leaderboard-source-toggle" role="group" aria-label="Game over leaderboard source">
+            <button id="gameOverLocalLeaderboardButton" class="source-toggle-button" type="button">Local</button>
+            <button id="gameOverGlobalLeaderboardButton" class="source-toggle-button" type="button">Global</button>
+        </div>
+        <div id="gameOverLeaderboardStatus" class="menu-status">Loading...</div>
+        <div id="gameOverLeaderboardList" class="menu-leaderboard-list"></div>
+        <button id="gameOverLeaderboardRefreshButton" class="menu-button game-button compact-action" type="button">Refresh</button>
+    </div>
+
     <div id="gameOverControls" style="display: none; position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); z-index: 10; gap: 20px;">
         <button id="retryButton" class="game-button game-over-button">Retry</button>
         <button id="mainMenuButton" class="game-button game-over-button">Main Menu</button>
@@ -153,7 +217,7 @@
     </div>
 
     <!-- Load main script as a module -->
-    <script type="module" src="game.js"></script>
+    <script type="module" src="game.js?v=mobile-portrait-29"></script>
     <!-- Note: The Firebase SDKs are now imported within firebaseConfig.js -->
 </body>
 </html>

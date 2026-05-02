@@ -5,7 +5,7 @@
         PLATFORM_BASE_WIDTH, PLATFORM_HEIGHT, PLATFORM_MIDDLE_THRESHOLD,
         MOVING_PLATFORM_SPEED,
         PLATFORM_FLASH_INTERVAL_MAX
-    } from './constants.js';
+    } from './constants.js?v=mobile-portrait-29';
 
     // --- Player Definition ---
     export const player = {
@@ -19,6 +19,7 @@
         // Constants assigned from import
         speed: PLAYER_SPEED,
         jumpPower: PLAYER_JUMP_POWER,
+        baseGravity: PLAYER_GRAVITY,
         gravity: PLAYER_GRAVITY,
         dashPower: PLAYER_DASH_POWER,
         dashDuration: PLAYER_DASH_DURATION,

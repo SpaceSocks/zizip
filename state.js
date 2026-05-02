@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js';
-import { getFirebaseServices } from './firebaseConfig.js';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-29';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-29';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({
@@ -55,13 +55,35 @@ let topScore = Number(localStorage.getItem('topScore')) || 0;
 let highestHeight = Number(localStorage.getItem('highestHeight')) || 0;
 const BEST_RUN_REPLAY_KEY = 'zipzip_bestRunReplay';
 const GHOST_ENABLED_KEY = 'zipzip_bestRunGhostEnabled';
-const REPLAY_SAMPLE_INTERVAL_MS = 100;
-const MAX_REPLAY_SAMPLES = 6000;
+const REPLAY_SAMPLE_INTERVAL_MS = 33;
+const MAX_REPLAY_SAMPLES = 9000;
 let bestRunReplay = readBestRunReplay();
 let currentRunReplay = null;
 let lastReplaySampleTime = 0;
 let ghostEnabled = localStorage.getItem(GHOST_ENABLED_KEY) !== 'false';
 let replayViewer = null;
+const pendingPersistentStats = new Map();
+let persistentStatsWriteScheduled = false;
+
+function schedulePersistentStatWrite(key, value) {
+    pendingPersistentStats.set(key, value);
+    if (persistentStatsWriteScheduled) return;
+    persistentStatsWriteScheduled = true;
+
+    const writeStats = () => {
+        persistentStatsWriteScheduled = false;
+        pendingPersistentStats.forEach((queuedValue, queuedKey) => {
+            localStorage.setItem(queuedKey, queuedValue);
+        });
+        pendingPersistentStats.clear();
+    };
+
+    if ('requestIdleCallback' in window) {
+        window.requestIdleCallback(writeStats, { timeout: 1000 });
+    } else {
+        window.setTimeout(writeStats, 0);
+    }
+}
 
 function clampReplayRatio(value, fallback = 0.4) {
     if (!Number.isFinite(value)) return fallback;
@@ -85,7 +107,20 @@ export const getCurrentGameState = () => currentGameState;
 export function setCurrentGameState(newState) {
     console.log(`Game State changing from ${currentGameState} to ${newState}`);
     currentGameState = newState;
-    // Potentially add logic here based on state transitions
+    syncDocumentGameClasses(newState);
+}
+
+function syncDocumentGameClasses(gameState) {
+    if (typeof document === 'undefined' || !document.body) return;
+    const gameScreenStates = new Set([
+        GameState.Playing,
+        GameState.Dying,
+        GameState.Paused,
+        GameState.Replay,
+        GameState.GameOver
+    ]);
+    document.body.classList.toggle('game-screen-active', gameScreenStates.has(gameState));
+    document.body.classList.toggle('touch-controls-active', gameState === GameState.Playing);
 }
 
 export const getScore = () => score;
@@ -142,7 +177,6 @@ export function filterPlatforms(predicate) { platforms = platforms.filter(predic
 // NEW: Accessor for last landed platform
 export function setLastLandedPlatformId(id) {
     lastLandedPlatformId = id;
-    console.log(`Last landed platform ID set to: ${id}`);
 }
 export function getLastLandedPlatformId() {
     return lastLandedPlatformId;
@@ -226,7 +260,7 @@ export function resetGameStats() {
 
 export function beginRunReplay() {
     currentRunReplay = {
-        version: 3,
+        version: 5,
         savedAt: 0,
         score: 0,
         maxHeight: 0,
@@ -234,6 +268,9 @@ export function beginRunReplay() {
         duration: 0,
         canvasWidth: 0,
         canvasHeight: 0,
+        isMobileRun: false,
+        viewportProfile: 'desktop',
+        aspectRatio: 0,
         platforms: [],
         samples: [],
         events: []
@@ -245,6 +282,11 @@ export function setRunReplayMeta(meta = {}) {
     if (!currentRunReplay) beginRunReplay();
     currentRunReplay.canvasWidth = meta.canvasWidth || currentRunReplay.canvasWidth || 0;
     currentRunReplay.canvasHeight = meta.canvasHeight || currentRunReplay.canvasHeight || 0;
+    if (typeof meta.isMobileRun === 'boolean') currentRunReplay.isMobileRun = meta.isMobileRun;
+    if (meta.viewportProfile) currentRunReplay.viewportProfile = meta.viewportProfile;
+    currentRunReplay.aspectRatio = currentRunReplay.canvasWidth && currentRunReplay.canvasHeight
+        ? Math.round((currentRunReplay.canvasWidth / currentRunReplay.canvasHeight) * 10000) / 10000
+        : currentRunReplay.aspectRatio || 0;
 }
 
 export function recordRunReplayPlatform(platform) {
@@ -279,6 +321,9 @@ export function recordRunReplaySample(sample) {
         facing: sample.facing < 0 ? -1 : 1,
         cameraDrop: Math.round((sample.cameraDrop || 0) * 10) / 10,
         groundedPlatformId: Number.isFinite(sample.groundedPlatformId) ? sample.groundedPlatformId : null,
+        groundedOffsetRatio: Number.isFinite(sample.groundedOffsetRatio)
+            ? Math.max(-1, Math.min(2, Math.round(sample.groundedOffsetRatio * 1000) / 1000))
+            : null,
         visible: sample.visible !== false
     });
 
@@ -375,8 +420,28 @@ function getReplaySamples(replay) {
         facing: sample[4] < 0 ? -1 : 1,
         visible: sample[5] !== 0,
         cameraDrop: sample[6] || 0,
-        groundedPlatformId: sample[7] >= 0 ? sample[7] : null
-    } : sample);
+        groundedPlatformId: sample[7] >= 0 ? sample[7] : null,
+        groundedOffsetRatio: null
+    } : {
+        time: sample.time ?? sample.t ?? 0,
+        height: sample.height ?? sample.h ?? 0,
+        xRatio: sample.xRatio ?? sample.x ?? 0.5,
+        yRatio: sample.yRatio ?? sample.y ?? 0.4,
+        facing: (sample.facing ?? sample.f ?? 1) < 0 ? -1 : 1,
+        visible: sample.visible ?? sample.v !== 0,
+        cameraDrop: sample.cameraDrop ?? sample.c ?? 0,
+        groundedPlatformId: sample.groundedPlatformId ?? sample.g ?? null,
+        groundedOffsetRatio: sample.groundedOffsetRatio ?? sample.o ?? null
+    });
+}
+
+function pickDiscreteReplayValue(a, b, timeMs, key, fallback = null, edgeMs = 24) {
+    const aValue = a?.[key] ?? fallback;
+    const bValue = b?.[key] ?? fallback;
+    if (aValue === bValue) return aValue;
+    if (timeMs <= (a.time || 0) + edgeMs) return aValue;
+    if (timeMs >= (b.time || 0) - edgeMs) return bValue;
+    return fallback;
 }
 
 export function getReplayPlatforms(replay) {
@@ -389,29 +454,40 @@ export function getReplayPlatforms(replay) {
         height: platform[4],
         time: platform[5],
         movement: platform[6] || null
-    } : platform);
+    } : {
+        id: platform.id ?? platform.i,
+        type: platform.type ?? platform.p ?? 'normal',
+        x: platform.x ?? 0,
+        width: platform.width ?? platform.w ?? 0,
+        height: platform.height ?? platform.h ?? 0,
+        time: platform.time ?? platform.t ?? 0,
+        movement: platform.movement ?? platform.m ?? null
+    });
 }
 
 function compactReplayForStorage(replay) {
     if (!replay) return null;
     const samples = getReplaySamples(replay);
-    const maxSamples = 2600;
+    const maxSamples = 4800;
     const stride = Math.max(1, Math.ceil(samples.length / maxSamples));
     const compactSamples = samples
         .filter((_, index) => index === 0 || index === samples.length - 1 || index % stride === 0)
-        .map(sample => [
-            Math.round(sample.time || 0),
-            Math.round((sample.height || 0) * 10) / 10,
-            Math.round((sample.xRatio || 0) * 10000) / 10000,
-            Math.round((sample.yRatio ?? 0.4) * 10000) / 10000,
-            sample.facing < 0 ? -1 : 1,
-            sample.visible === false ? 0 : 1,
-            Math.round((sample.cameraDrop || 0) * 10) / 10,
-            Number.isFinite(sample.groundedPlatformId) ? sample.groundedPlatformId : -1
-        ]);
+        .map(sample => ({
+            t: Math.round(sample.time || 0),
+            h: Math.round((sample.height || 0) * 10) / 10,
+            x: Math.round((sample.xRatio || 0) * 10000) / 10000,
+            y: Math.round((sample.yRatio ?? 0.4) * 10000) / 10000,
+            f: sample.facing < 0 ? -1 : 1,
+            v: sample.visible === false ? 0 : 1,
+            c: Math.round((sample.cameraDrop || 0) * 10) / 10,
+            g: Number.isFinite(sample.groundedPlatformId) ? sample.groundedPlatformId : -1,
+            o: Number.isFinite(sample.groundedOffsetRatio)
+                ? Math.max(-1, Math.min(2, Math.round(sample.groundedOffsetRatio * 1000) / 1000))
+                : null
+        }));
 
     return {
-        version: 4,
+        version: 5,
         savedAt: replay.savedAt,
         score: replay.score,
         maxHeight: replay.maxHeight,
@@ -419,15 +495,20 @@ function compactReplayForStorage(replay) {
         duration: replay.duration,
         canvasWidth: replay.canvasWidth,
         canvasHeight: replay.canvasHeight,
-        platforms: getReplayPlatforms(replay).map(platform => [
-            platform.id,
-            platform.type || 'normal',
-            Math.round(platform.x || 0),
-            Math.round(platform.width || 0),
-            Math.round((platform.height || 0) * 10) / 10,
-            Math.round(platform.time || 0),
-            platform.movement || null
-        ]),
+        isMobileRun: replay.isMobileRun === true || replay.viewportProfile === 'mobile',
+        viewportProfile: replay.viewportProfile || (replay.isMobileRun ? 'mobile' : 'desktop'),
+        aspectRatio: replay.aspectRatio || (replay.canvasWidth && replay.canvasHeight
+            ? Math.round((replay.canvasWidth / replay.canvasHeight) * 10000) / 10000
+            : 0),
+        platforms: getReplayPlatforms(replay).map(platform => ({
+            i: platform.id,
+            p: platform.type || 'normal',
+            x: Math.round(platform.x || 0),
+            w: Math.round(platform.width || 0),
+            h: Math.round((platform.height || 0) * 10) / 10,
+            t: Math.round(platform.time || 0),
+            m: platform.movement || null
+        })),
         samples: compactSamples,
         events: Array.isArray(replay.events) ? replay.events : []
     };
@@ -528,15 +609,21 @@ export function getReplaySampleAt(timeMs) {
     const b = samples[high];
     const span = Math.max(1, b.time - a.time);
     const t = (timeMs - a.time) / span;
+    const groundedPlatformId = pickDiscreteReplayValue(a, b, timeMs, 'groundedPlatformId', null);
+    const visible = pickDiscreteReplayValue(a, b, timeMs, 'visible', true, 36) !== false;
+    const facing = pickDiscreteReplayValue(a, b, timeMs, 'facing', 1, 36) < 0 ? -1 : 1;
     return {
         time: timeMs,
         height: a.height + (b.height - a.height) * t,
         xRatio: a.xRatio + (b.xRatio - a.xRatio) * t,
         yRatio: (a.yRatio ?? 0.4) + ((b.yRatio ?? 0.4) - (a.yRatio ?? 0.4)) * t,
         cameraDrop: (a.cameraDrop || 0) + ((b.cameraDrop || 0) - (a.cameraDrop || 0)) * t,
-        groundedPlatformId: timeMs - a.time < b.time - timeMs ? a.groundedPlatformId : b.groundedPlatformId,
-        visible: timeMs - a.time < b.time - timeMs ? a.visible !== false : b.visible !== false,
-        facing: timeMs - a.time < b.time - timeMs ? (a.facing || 1) : (b.facing || 1)
+        groundedPlatformId,
+        groundedOffsetRatio: groundedPlatformId === null
+            ? null
+            : pickDiscreteReplayValue(a, b, timeMs, 'groundedOffsetRatio', null),
+        visible,
+        facing
     };
 }
 
@@ -579,6 +666,217 @@ let lastFetchTime = 0;
 const CACHE_DURATION = 60 * 1000; // Cache for 60 seconds
 
 let firestoreApiPromise = null;
+let authWaitPromise = null;
+
+function makeLeaderboardError(code, message, cause = null) {
+    const error = new Error(message);
+    error.code = code;
+    if (cause) error.cause = cause;
+    return error;
+}
+
+async function getAuthApiForLeaderboard() {
+    const [{ auth }, authApi] = await Promise.all([
+        getFirebaseServices(),
+        import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js")
+    ]);
+    return { auth, ...authApi };
+}
+
+async function waitForLeaderboardAuth(timeoutMs = 8000) {
+    const { auth, onAuthStateChanged } = await getAuthApiForLeaderboard();
+    if (auth.currentUser) return auth.currentUser;
+
+    if (!authWaitPromise) {
+        authWaitPromise = new Promise((resolve) => {
+            const timeoutId = window.setTimeout(() => {
+                unsubscribe();
+                authWaitPromise = null;
+                resolve(auth.currentUser || null);
+            }, timeoutMs);
+
+            const unsubscribe = onAuthStateChanged(auth, (user) => {
+                window.clearTimeout(timeoutId);
+                unsubscribe();
+                authWaitPromise = null;
+                resolve(user || null);
+            });
+        });
+    }
+
+    return authWaitPromise;
+}
+
+function convertFirestoreValue(value) {
+    if (!value || typeof value !== 'object') return value;
+    if ('stringValue' in value) return value.stringValue;
+    if ('integerValue' in value) return Number(value.integerValue);
+    if ('doubleValue' in value) return Number(value.doubleValue);
+    if ('booleanValue' in value) return Boolean(value.booleanValue);
+    if ('timestampValue' in value) return value.timestampValue;
+    if ('nullValue' in value) return null;
+    if ('arrayValue' in value) {
+        return (value.arrayValue.values || []).map(convertFirestoreValue);
+    }
+    if ('mapValue' in value) {
+        return convertFirestoreFields(value.mapValue.fields || {});
+    }
+    return value;
+}
+
+function convertFirestoreFields(fields = {}) {
+    return Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, convertFirestoreValue(value)]));
+}
+
+function toFirestoreValue(value) {
+    if (value === null || value === undefined) return { nullValue: null };
+    if (typeof value === 'string') return { stringValue: value };
+    if (typeof value === 'boolean') return { booleanValue: value };
+    if (typeof value === 'number') {
+        return Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
+    }
+    if (Array.isArray(value)) {
+        const values = value.map(toFirestoreValue);
+        return values.length ? { arrayValue: { values } } : { arrayValue: {} };
+    }
+    if (typeof value === 'object') {
+        return {
+            mapValue: {
+                fields: Object.fromEntries(Object.entries(value).map(([key, nestedValue]) => [key, toFirestoreValue(nestedValue)]))
+            }
+        };
+    }
+    return { stringValue: String(value) };
+}
+
+function toFirestoreFields(data) {
+    return Object.fromEntries(Object.entries(data).map(([key, value]) => [key, toFirestoreValue(value)]));
+}
+
+async function fetchGlobalLeaderboardViaRest(idToken = null) {
+    const headers = {
+        'Content-Type': 'application/json'
+    };
+    if (idToken) {
+        headers.Authorization = `Bearer ${idToken}`;
+    }
+
+    const response = await fetch('https://firestore.googleapis.com/v1/projects/zipzip-d8d69/databases/(default)/documents:runQuery?key=AIzaSyBNl4-fwt3BoZ-ERO1JUOo8cFwrqndlU_k', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+            structuredQuery: {
+                from: [{ collectionId: LEADERBOARD_COLLECTION }],
+                orderBy: [
+                    { field: { fieldPath: 'score' }, direction: 'DESCENDING' },
+                    { field: { fieldPath: 'timestamp' }, direction: 'ASCENDING' }
+                ],
+                limit: 40
+            }
+        })
+    });
+
+    if (!response.ok) {
+        throw makeLeaderboardError('global-rest-failed', `Global leaderboard REST read failed (${response.status}).`);
+    }
+
+    const rows = await response.json();
+    return rows
+        .filter(row => row.document?.fields)
+        .map(row => ({
+            id: row.document.name?.split('/').pop() || '',
+            ...convertFirestoreFields(row.document.fields)
+        }));
+}
+
+async function queryGlobalLeaderboardEntryForUserViaRest(idToken, leaderboardUserId) {
+    const response = await fetch('https://firestore.googleapis.com/v1/projects/zipzip-d8d69/databases/(default)/documents:runQuery?key=AIzaSyBNl4-fwt3BoZ-ERO1JUOo8cFwrqndlU_k', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${idToken}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            structuredQuery: {
+                from: [{ collectionId: LEADERBOARD_COLLECTION }],
+                where: {
+                    fieldFilter: {
+                        field: { fieldPath: 'userId' },
+                        op: 'EQUAL',
+                        value: { stringValue: leaderboardUserId }
+                    }
+                },
+                limit: 10
+            }
+        })
+    });
+
+    if (!response.ok) {
+        throw makeLeaderboardError('global-rest-submit-query-failed', `Global leaderboard REST submit lookup failed (${response.status}).`);
+    }
+
+    const rows = await response.json();
+    const entries = rows
+        .filter(row => row.document?.fields)
+        .map(row => ({
+            id: row.document.name?.split('/').pop() || '',
+            name: row.document.name,
+            ...convertFirestoreFields(row.document.fields)
+        }));
+    return dedupeLeaderboardEntries(entries)[0] || null;
+}
+
+async function submitGlobalLeaderboardViaRest(idToken, leaderboardUserId, entryData) {
+    const existingEntry = await queryGlobalLeaderboardEntryForUserViaRest(idToken, leaderboardUserId);
+    const isBetter = !existingEntry || entryData.score > (existingEntry.score || 0) ||
+        (entryData.score === (existingEntry.score || 0) && entryData.maxHeight > (existingEntry.maxHeight || 0)) ||
+        (entryData.score === (existingEntry.score || 0) && entryData.maxHeight === (existingEntry.maxHeight || 0) && entryData.replay && !existingEntry.replay);
+
+    if (!isBetter) {
+        return { skipped: true };
+    }
+
+    const documentId = existingEntry?.id || `score-${leaderboardUserId}-${Date.now()}`.replace(/[^A-Za-z0-9_-]/g, '-');
+    const documentName = existingEntry?.name || `projects/zipzip-d8d69/databases/(default)/documents/${LEADERBOARD_COLLECTION}/${documentId}`;
+    const fieldData = {
+        userId: leaderboardUserId,
+        displayName: entryData.displayName,
+        score: entryData.score,
+        maxHeight: entryData.maxHeight,
+        time: entryData.time,
+        replay: entryData.replay
+    };
+    const write = {
+        update: {
+            name: documentName,
+            fields: toFirestoreFields(fieldData)
+        },
+        updateTransforms: [
+            { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }
+        ]
+    };
+
+    if (existingEntry) {
+        write.updateMask = { fieldPaths: Object.keys(fieldData) };
+    } else {
+        write.updateTransforms.push({ fieldPath: 'timestamp', setToServerValue: 'REQUEST_TIME' });
+    }
+
+    const response = await fetch('https://firestore.googleapis.com/v1/projects/zipzip-d8d69/databases/(default)/documents:commit?key=AIzaSyBNl4-fwt3BoZ-ERO1JUOo8cFwrqndlU_k', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${idToken}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ writes: [write] })
+    });
+
+    if (!response.ok) {
+        throw makeLeaderboardError('global-rest-submit-failed', `Global leaderboard REST submit failed (${response.status}).`);
+    }
+
+    return { skipped: false, id: documentId };
+}
 
 async function getFirestoreApi() {
     if (!firestoreApiPromise) {
@@ -631,23 +929,12 @@ export async function clearRemoteLeaderboardForFreshStart() {
         return { skipped: true, deleted: 0 };
     }
 
-    const {
-        db,
-        collection,
-        getDocs,
-        deleteDoc
-    } = await getFirestoreApi();
-
-    const leaderboardRef = collection(db, LEADERBOARD_COLLECTION);
-    const snapshot = await getDocs(leaderboardRef);
-    await Promise.all(snapshot.docs.map(entryDoc => deleteDoc(entryDoc.ref)));
-
     localStorage.setItem(REMOTE_LEADERBOARD_RESET_KEY, 'done');
     localLeaderboardCache = null;
     lastFetchTime = Date.now();
     lastSubmittedScore = null;
-    console.log(`Remote leaderboard cleared for replay update. Deleted ${snapshot.size} entries.`);
-    return { skipped: false, deleted: snapshot.size };
+    console.log("Remote leaderboard reset migration skipped; client deletes are disabled.");
+    return { skipped: true, deleted: 0 };
 }
 
 function getLeaderboardUserId() {
@@ -765,8 +1052,19 @@ export async function getGlobalLeaderboardEntries() {
         return dedupedLeaderboard;
 
     } catch (error) {
-        console.warn("Remote leaderboard unavailable.", error);
-        throw error;
+        console.warn("Firestore SDK leaderboard read failed. Trying authenticated REST fallback.", error);
+        try {
+            const authUser = await waitForLeaderboardAuth(2000);
+            const idToken = authUser ? await authUser.getIdToken() : null;
+            const leaderboardData = await fetchGlobalLeaderboardViaRest(idToken);
+            const dedupedLeaderboard = dedupeLeaderboardEntries(leaderboardData).slice(0, 10);
+            localLeaderboardCache = { source: 'global', entries: dedupedLeaderboard };
+            lastFetchTime = now;
+            return dedupedLeaderboard;
+        } catch (fallbackError) {
+            console.warn("Remote leaderboard unavailable.", fallbackError);
+            throw fallbackError?.code ? fallbackError : error;
+        }
     }
 }
 
@@ -781,7 +1079,7 @@ export async function getLeaderboard(source = activeLeaderboardSource) {
 
 // Modify addLeaderboardEntry to store the data and accept individual arguments
 export async function addLeaderboardEntry(playerName, score, maxHeight, time) {
-    const leaderboardUserId = getLeaderboardUserId();
+    let leaderboardUserId = getLeaderboardUserId();
     const replay = compactReplayForStorage(buildCurrentRunReplay(score, maxHeight, time));
 
     // Store details before sending to Firestore (create an object for storage)
@@ -789,13 +1087,23 @@ export async function addLeaderboardEntry(playerName, score, maxHeight, time) {
     lastSubmittedScore = { ...entryDataForHighlight, userId: leaderboardUserId }; // Store a copy
     console.log("Storing last submitted score for highlighting:", lastSubmittedScore);
 
+    // Always keep a local copy so game-over can show the latest run even if mobile
+    // browser auth/network blocks the global board for a moment.
+    addLocalLeaderboardEntry(playerName, score, maxHeight, time, replay);
+
     if (activeLeaderboardSource === 'local') {
-        addLocalLeaderboardEntry(playerName, score, maxHeight, time, replay);
         return;
     }
 
     console.log(`Adding leaderboard entry to Firestore for ${playerName}: Score=${score}, Height=${maxHeight}, Time=${time}`);
     try {
+        const authUser = await waitForLeaderboardAuth();
+        if (!authUser) {
+            throw makeLeaderboardError('global-auth-required', 'Sign in to submit to the global leaderboard.');
+        }
+        leaderboardUserId = authUser.uid;
+        lastSubmittedScore = { ...entryDataForHighlight, userId: leaderboardUserId };
+
         const {
             db,
             collection,
@@ -855,7 +1163,28 @@ export async function addLeaderboardEntry(playerName, score, maxHeight, time) {
         localLeaderboardCache = null;
         lastFetchTime = 0;
     } catch (error) {
-        console.warn("Remote leaderboard submit failed. Keeping this run out of the local-only board.", error);
+        console.warn("Firestore SDK leaderboard submit failed. Trying REST submit fallback.", error);
+        try {
+            const authUser = await waitForLeaderboardAuth(2000);
+            if (!authUser) throw makeLeaderboardError('global-auth-required', 'Sign in to submit to the global leaderboard.');
+            leaderboardUserId = authUser.uid;
+            const idToken = await authUser.getIdToken();
+            const restEntryData = {
+                userId: leaderboardUserId,
+                displayName: playerName,
+                score,
+                maxHeight,
+                time,
+                replay
+            };
+            await submitGlobalLeaderboardViaRest(idToken, leaderboardUserId, restEntryData);
+            localLeaderboardCache = null;
+            lastFetchTime = 0;
+            lastSubmittedScore = { ...entryDataForHighlight, userId: leaderboardUserId };
+            console.log("Leaderboard entry submitted through REST fallback.");
+        } catch (fallbackError) {
+            console.warn("Remote leaderboard submit failed. Keeping this run local-only.", fallbackError);
+        }
     }
 }
 
@@ -871,18 +1200,18 @@ export function clearLeaderboardCache() {
 export function getTopScore() { return topScore; }
 export function setTopScore(newScore) {
     topScore = newScore;
-    localStorage.setItem('topScore', topScore);
+    schedulePersistentStatWrite('topScore', topScore);
 }
 
 export function getHighestHeight() { return highestHeight; }
 export function setHighestHeight(newHeight) {
     highestHeight = Math.round(newHeight);
-    localStorage.setItem('highestHeight', highestHeight);
+    schedulePersistentStatWrite('highestHeight', highestHeight);
 }
 
 export function getIsGameOver() { return currentGameState === GameState.GameOver; }
 
-export function setGameOver(value) { currentGameState = GameState.GameOver; }
+export function setGameOver(value) { setCurrentGameState(GameState.GameOver); }
 
 // NEW: Setter for Auth Info (called from ui.js)
 export function setPlayerInfo(uid, name) {

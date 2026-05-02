@@ -1,13 +1,52 @@
 // This file will handle graphics, drawing, and canvas resizing
 
-import { R64 } from './constants.js';
-import * as state from './state.js';
-import { player } from './entities.js'; // Need player for drawing
-import * as ui from './ui.js'; // Import ui module
+import { R64 } from './constants.js?v=mobile-portrait-29';
+import * as state from './state.js?v=mobile-portrait-29';
+import { player } from './entities.js?v=mobile-portrait-29'; // Need player for drawing
+import * as ui from './ui.js?v=mobile-portrait-29'; // Import ui module
 
 // --- Canvas Setup ---
 export const canvas = document.getElementById('gameCanvas');
 export const ctx = canvas.getContext('2d');
+let playfieldScale = 1;
+
+export function getVisibleViewport() {
+    const viewport = window.visualViewport;
+    const width = Math.max(1, Math.round(viewport?.width || document.documentElement.clientWidth || window.innerWidth));
+    const height = Math.max(1, Math.round(viewport?.height || document.documentElement.clientHeight || window.innerHeight));
+    return {
+        width,
+        height,
+        offsetLeft: Math.round(viewport?.offsetLeft || 0),
+        offsetTop: Math.round(viewport?.offsetTop || 0)
+    };
+}
+
+function syncViewportStyles() {
+    const viewport = getVisibleViewport();
+    const root = document.documentElement;
+    root.style.setProperty('--app-width', `${viewport.width}px`);
+    root.style.setProperty('--app-height', `${viewport.height}px`);
+    root.style.setProperty('--app-left', `${viewport.offsetLeft}px`);
+    root.style.setProperty('--app-top', `${viewport.offsetTop}px`);
+
+    const isTouch = window.matchMedia?.('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+    const isMobileViewport = isTouch && Math.min(viewport.width, viewport.height) <= 720;
+    document.body?.classList.toggle('mobile-viewport', isMobileViewport);
+    document.body?.classList.toggle('landscape-blocked', isMobileViewport && viewport.width > viewport.height);
+
+    return viewport;
+}
+
+function getViewportPlayfieldScale(viewport) {
+    const isTouch = window.matchMedia?.('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+    const isPortraitPhone = isTouch && Math.min(viewport.width, viewport.height) <= 720 && viewport.height >= viewport.width;
+    return isPortraitPhone ? 0.8 : 1;
+}
+
+export function getPlayfieldScale() {
+    return playfieldScale;
+}
 
 // --- Starfield State ---
 let stars = [];
@@ -16,13 +55,14 @@ let stars = [];
 let leaderboardData = null;
 let leaderboardLoading = false;
 let leaderboardError = null;
+let leaderboardNotice = null;
 let leaderboardReplayHitboxes = [];
 
 canvas.addEventListener('click', (event) => {
     if (state.getCurrentGameState() !== state.GameState.GameOver) return;
     const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const x = (event.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (event.clientY - rect.top) * (canvas.height / rect.height);
     const hitbox = leaderboardReplayHitboxes.find(box =>
         x >= box.x && x <= box.x + box.width &&
         y >= box.y && y <= box.y + box.height
@@ -58,15 +98,18 @@ const STAR_VARIANTS = [
     { count: 58, color: '#8fd3ff', alphaMin: 0.34, alphaMax: 0.62, sizeMin: 1.13, sizeMax: 1.95, speedMin: 0.120, speedMax: 0.204 },
     { count: 24, color: '#ffffff', alphaMin: 0.62, alphaMax: 0.92, sizeMin: 1.2, sizeMax: 2.18, speedMin: 0.180, speedMax: 0.285 }
 ];
+const STAR_SIZE_SCALE = 2;
+const WHITE_STAR_SPEED_SCALE = 3;
 
 let deathParticles = [];
 
 function createStar(variant) {
+    const speedScale = variant.color === '#ffffff' ? WHITE_STAR_SPEED_SCALE : 1;
     return {
         x: Math.random() * canvas.width,
         y: Math.random() * canvas.height,
-        size: Math.random() * (variant.sizeMax - variant.sizeMin) + variant.sizeMin,
-        speed: Math.random() * (variant.speedMax - variant.speedMin) + variant.speedMin,
+        size: Math.max(2, Math.round((Math.random() * (variant.sizeMax - variant.sizeMin) + variant.sizeMin) * STAR_SIZE_SCALE)),
+        speed: (Math.random() * (variant.speedMax - variant.speedMin) + variant.speedMin) * speedScale,
         alpha: Math.random() * (variant.alphaMax - variant.alphaMin) + variant.alphaMin,
         color: variant.color
     };
@@ -118,10 +161,20 @@ export function spawnDeathExplosion(x, y) {
     deathParticles.forEach(particle => particle.maxLife = particle.life);
 }
 
+export function spawnReplayDeathExplosion(event = {}) {
+    const replay = state.getReplayViewer()?.replay;
+    const view = getReplayView(replay || {});
+    const x = view.x + (event.xRatio ?? 0.5) * view.sourceWidth * view.scaleX;
+    const y = view.y + (event.yRatio ?? 0.68) * view.sourceHeight * view.scaleY;
+    spawnDeathExplosion(x, y);
+}
+
 // --- Canvas Resizing ---
 export function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const viewport = syncViewportStyles();
+    playfieldScale = getViewportPlayfieldScale(viewport);
+    canvas.width = Math.round(viewport.width / playfieldScale);
+    canvas.height = Math.round(viewport.height / playfieldScale);
     console.log(`Canvas resized to: ${canvas.width}x${canvas.height}`);
     initializeStars();
 }
@@ -152,6 +205,11 @@ export function formatTime(milliseconds, includeMilliseconds = true) {
 
 // Draw HUD (Heads Up Display)
 function drawHUD(player) {
+    if (isCompactHUD()) {
+        drawCompactHUD(player);
+        return;
+    }
+
     ctx.fillStyle = R64.WHITE;
     ctx.font = '24px Petitinho';
     const lineHeight = 30;
@@ -249,26 +307,84 @@ function drawHUD(player) {
 export function invalidateLeaderboard() {
     leaderboardData = null;
     leaderboardError = null;
+    leaderboardNotice = null;
     leaderboardLoading = false;
+}
+
+function isCompactHUD() {
+    return canvas.width <= 720 || (window.matchMedia?.('(pointer: coarse)').matches && canvas.width <= 900);
+}
+
+function drawCompactHUD(player) {
+    const displayName = state.getDisplayName();
+    const elapsedTimeMs = state.getElapsedTime();
+    const formattedTime = formatTime(elapsedTimeMs, true);
+    const currentHeight = player ? getDisplayedRunHeight(player) : 0;
+    const edge = Math.max(10, Math.round(canvas.width * 0.028));
+    const top = 14;
+    const halfWidth = canvas.width / 2;
+
+    ctx.fillStyle = R64.WHITE;
+    ctx.textBaseline = 'top';
+
+    ctx.font = '14px Petitinho';
+    ctx.textAlign = 'left';
+    if (displayName) {
+        ctx.fillText(`PLAYER: ${displayName}`, edge, top, halfWidth - 18);
+    }
+    ctx.fillText(`LIVES: ${state.getLives()}`, edge, top + 20, halfWidth - 18);
+
+    ctx.textAlign = 'right';
+    ctx.fillText(`SCORE: ${state.getScore()}`, canvas.width - edge, top, halfWidth - 18);
+    ctx.fillText(`HEIGHT: ${Math.round(state.getMaxHeight())} M`, canvas.width - edge, top + 20, halfWidth - 18);
+
+    ctx.textAlign = 'center';
+    ctx.font = '16px Petitinho';
+    ctx.fillText(formattedTime, halfWidth, top + 40, canvas.width - edge * 2);
+
+    const trackName = state.getCurrentTrackInfo();
+    if (trackName !== "None" && canvas.height > 620) {
+        ctx.fillStyle = 'rgba(199, 220, 208, 0.86)';
+        ctx.font = '12px Petitinho';
+        ctx.fillText(`Playing: ${trackName}`, halfWidth, top + 60, canvas.width - edge * 2);
+    }
+
+    ctx.fillStyle = R64.WHITE;
+    ctx.font = `${Math.min(17, Math.max(14, Math.round(canvas.width * 0.04)))}px Petitinho`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${Math.floor(currentHeight)} M`, canvas.width - edge, Math.round(canvas.height * 0.42), canvas.width * 0.64);
+
+    const comboMultiplier = state.getComboMultiplier();
+    const perfectStreak = state.getPerfectLandingStreak();
+    if (comboMultiplier > 1) {
+        ctx.fillStyle = R64.YELLOW;
+        ctx.font = '16px Petitinho';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`PERFECT ${perfectStreak} x${comboMultiplier}`, halfWidth, top + 78, canvas.width - edge * 2);
+    }
 }
 
 function getDisplayedRunHeight(player) {
     return state.getMaxHeight() + Math.max(0, (state.getInitialPlayerY() - player.y) / 10);
 }
 
-function getPlayerSpriteDrawBox(x, y) {
-    const drawWidth = player.width * 1.6;
-    const drawHeight = player.height * 1.35;
+function getPlayerSpriteDrawBox(x, y, sizeScale = 1) {
+    const bodyWidth = player.width * sizeScale;
+    const bodyHeight = player.height * sizeScale;
+    const drawWidth = bodyWidth * 1.6;
+    const drawHeight = bodyHeight * 1.35;
     return {
-        x: x + player.width / 2 - drawWidth / 2,
-        y: y + player.height - drawHeight,
+        x: x + bodyWidth / 2 - drawWidth / 2,
+        y: y + bodyHeight - drawHeight,
         width: drawWidth,
         height: drawHeight
     };
 }
 
-function drawPlayerSpriteAt(x, y, facing = 1, alpha = 1, tint = null) {
-    const box = getPlayerSpriteDrawBox(x, y);
+function drawPlayerSpriteAt(x, y, facing = 1, alpha = 1, tint = null, sizeScale = 1) {
+    const box = getPlayerSpriteDrawBox(x, y, sizeScale);
 
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -286,7 +402,7 @@ function drawPlayerSpriteAt(x, y, facing = 1, alpha = 1, tint = null) {
         }
     } else {
         ctx.fillStyle = tint || player.color;
-        ctx.fillRect(x, y, player.width, player.height);
+        ctx.fillRect(x, y, player.width * sizeScale, player.height * sizeScale);
     }
 
     ctx.restore();
@@ -322,15 +438,28 @@ export async function fetchLeaderboard(force = false) {
     if (leaderboardLoading && !force) return; // Don't fetch if already loading
 
     console.log("Requesting leaderboard data fetch...");
+    if (force) state.clearLeaderboardCache();
     leaderboardLoading = true;
     leaderboardData = null; // Clear old data
     leaderboardError = null;
+    leaderboardNotice = null;
+    const requestedSource = state.getActiveLeaderboardSource();
     try {
         // Now actually call the async function from state.js
-        leaderboardData = await state.getLeaderboard(state.getActiveLeaderboardSource());
+        leaderboardData = await state.getLeaderboard(requestedSource);
         console.log("Leaderboard data received in graphics.js:", leaderboardData);
     } catch (err) {
         console.error("Error fetching leaderboard in graphics.js:", err);
+        if (requestedSource === 'global') {
+            try {
+                leaderboardData = await state.getLeaderboard('local');
+                leaderboardNotice = 'Global unavailable - local scores';
+                leaderboardError = null;
+                return;
+            } catch (localError) {
+                console.warn("Local leaderboard fallback also failed.", localError);
+            }
+        }
         leaderboardError = "Failed to load leaderboard.";
     } finally {
         leaderboardLoading = false;
@@ -340,11 +469,18 @@ export async function fetchLeaderboard(force = false) {
 // Draw Game Over Screen
 function drawGameOver() {
     // drawBackground(); // REMOVED - Background drawn in main draw loop
+    if (isCompactHUD()) {
+        drawCompactGameOver();
+        return;
+    }
 
     ctx.fillStyle = R64.RED;
     ctx.font = '80px Petitinho';
     ctx.textAlign = 'center';
     ctx.fillText('GAME OVER', canvas.width / 2, canvas.height * 0.2);
+    leaderboardReplayHitboxes = [];
+    ui.showGameOverControls();
+    return;
 
     // Draw Leaderboard Section
     ctx.fillStyle = R64.WHITE;
@@ -356,8 +492,8 @@ function drawGameOver() {
     const lineHeight = 30;
     const maxEntries = 10;
     // Reduce width - use 60% or a max pixel value
-    const leaderboardWidth = Math.min(canvas.width * 0.7, 700); // Max width of 700px, or 70% of screen
-    const leaderboardHeight = maxEntries * lineHeight + 40;
+    const leaderboardWidth = Math.min(canvas.width * 0.82, 820); // Wider box so headers and stats do not collide.
+    const leaderboardHeight = (maxEntries + 1) * lineHeight + 40;
     const leaderboardX = (canvas.width - leaderboardWidth) / 2; // Center the narrower box
     const padding = 20; // Reset padding maybe
     leaderboardReplayHitboxes = [];
@@ -374,27 +510,38 @@ function drawGameOver() {
     const rankX = leaderboardX + padding;
     const nameX = rankX + 50;
     // End points from right edge
-    const replayX = leaderboardX + leaderboardWidth - padding - 16;
-    const timeEndX = replayX - 44;
-    const heightEndX = timeEndX - 112; // <<< INCREASED SPACE FROM 100
-    const scoreEndX = heightEndX - 100;
+    const replayX = leaderboardX + leaderboardWidth - padding - 22;
+    const timeEndX = replayX - 64;
+    const heightEndX = timeEndX - 98;
+    const scoreEndX = heightEndX - 96;
     // Name column max width derived from score start
     const maxNameWidth = scoreEndX - nameX - 20;
 
-    // Optional: Draw Headers (Positions might need slight tweak)
-    /*
-    ctx.fillStyle = '#aaaaaa'; // Lighter color for headers
+    const headerY = startY - lineHeight / 2;
+    ctx.fillStyle = 'rgba(199, 220, 208, 0.88)';
+    ctx.font = '18px Petitinho';
     ctx.textAlign = 'left';
-    ctx.fillText("RANK", rankX, startY - lineHeight / 2);
-    ctx.fillText("NAME", nameX, startY - lineHeight / 2);
+    ctx.fillText("#", rankX, headerY);
+    ctx.fillText("NAME", nameX, headerY);
     ctx.textAlign = 'right';
-    ctx.fillText("SCORE", scoreEndX, startY - lineHeight / 2);
-    ctx.fillText("HEIGHT", heightEndX, startY - lineHeight / 2);
-    ctx.fillText("TIME", timeEndX, startY - lineHeight / 2);
-    ctx.fillStyle = R64.WHITE; // Reset color
-    */
+    ctx.fillText("SCORE", scoreEndX, headerY);
+    ctx.fillText("MAX H", heightEndX, headerY);
+    ctx.fillText("TIME", timeEndX, headerY);
+    ctx.textAlign = 'center';
+    ctx.fillText("RUN", replayX, headerY);
+    ctx.font = '20px Petitinho';
+    ctx.fillStyle = R64.WHITE;
 
     // --- Loading / Error / Empty States ---
+    if (leaderboardNotice) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = R64.YELLOW;
+        ctx.font = '16px Petitinho';
+        ctx.fillText(leaderboardNotice.toUpperCase(), canvas.width / 2, startY - lineHeight * 1.45);
+        ctx.font = '20px Petitinho';
+        ctx.fillStyle = R64.WHITE;
+    }
+
     if (leaderboardLoading) {
         ctx.textAlign = 'center';
         ctx.fillText("Loading Leaderboard...", canvas.width / 2, startY + leaderboardHeight / 2);
@@ -408,7 +555,7 @@ function drawGameOver() {
     } else {
         // --- Draw Entries ---
         leaderboardData.slice(0, maxEntries).forEach((entry, index) => {
-            const y = startY + (index * lineHeight); // Position for the current line
+            const y = startY + ((index + 1) * lineHeight); // Position for the current line
             const rank = `${index + 1}.`;
             const displayName = entry.displayName ? entry.displayName.toUpperCase() : 'ANON';
             const score = entry.score !== undefined ? entry.score.toString() : 'N/A'; // Convert score to string
@@ -478,6 +625,138 @@ function drawGameOver() {
    ui.showGameOverControls();
 }
 
+function drawCompactGameOver() {
+    const edge = Math.max(12, Math.round(canvas.width * 0.035));
+    const titleY = Math.max(76, Math.round(canvas.height * 0.12));
+    const titleFont = Math.min(42, Math.max(30, Math.round(canvas.width * 0.105)));
+    const headerFont = Math.min(25, Math.max(18, Math.round(canvas.width * 0.06)));
+    const rowFont = Math.min(18, Math.max(14, Math.round(canvas.width * 0.042)));
+    const lineHeight = Math.max(24, Math.round(rowFont * 1.55));
+    const maxEntries = 5;
+    const leaderboardWidth = canvas.width - edge * 2;
+    const leaderboardX = edge;
+    const startY = titleY + titleFont + 56;
+    const leaderboardHeight = lineHeight * (maxEntries + 1) + 20;
+    const padding = 10;
+
+    leaderboardReplayHitboxes = [];
+
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = R64.RED;
+    ctx.font = `${titleFont}px Petitinho`;
+    ctx.fillText('GAME OVER', canvas.width / 2, titleY, canvas.width - edge * 2);
+    leaderboardReplayHitboxes = [];
+    ui.showGameOverControls();
+    return;
+
+    ctx.fillStyle = R64.WHITE;
+    ctx.font = `${headerFont}px Petitinho`;
+    ctx.fillText('LEADERBOARD', canvas.width / 2, titleY + titleFont + 28, canvas.width - edge * 2);
+
+    ctx.fillStyle = 'rgba(46, 34, 47, 0.82)';
+    ctx.fillRect(leaderboardX, startY, leaderboardWidth, leaderboardHeight);
+    ctx.strokeStyle = 'rgba(199, 220, 208, 0.28)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(leaderboardX, startY, leaderboardWidth, leaderboardHeight);
+
+    ctx.font = `${rowFont}px Petitinho`;
+    ctx.fillStyle = 'rgba(199, 220, 208, 0.82)';
+    ctx.textBaseline = 'middle';
+
+    const rankX = leaderboardX + padding;
+    const nameX = rankX + 34;
+    const replayX = leaderboardX + leaderboardWidth - padding - 12;
+    const timeEndX = replayX - 34;
+    const heightEndX = timeEndX - 62;
+    const scoreEndX = heightEndX - 62;
+    const maxNameWidth = Math.max(44, scoreEndX - nameX - 12);
+
+    const headerY = startY + lineHeight / 2;
+    const bodyFont = ctx.font;
+    ctx.font = `${Math.max(12, rowFont - 3)}px Petitinho`;
+    ctx.textAlign = 'left';
+    ctx.fillText('#', rankX, headerY);
+    ctx.fillText('NAME', nameX, headerY, maxNameWidth);
+    ctx.textAlign = 'right';
+    ctx.fillText('SCORE', scoreEndX, headerY);
+    ctx.fillText('MAX H', heightEndX, headerY);
+    ctx.fillText('TIME', timeEndX, headerY);
+    ctx.textAlign = 'center';
+    ctx.fillText('RUN', replayX, headerY);
+    ctx.font = bodyFont;
+
+    if (leaderboardNotice) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = R64.YELLOW;
+        ctx.font = `${Math.max(11, rowFont - 2)}px Petitinho`;
+        ctx.fillText(leaderboardNotice.toUpperCase(), canvas.width / 2, startY - 13, leaderboardWidth - padding * 2);
+        ctx.font = `${rowFont}px Petitinho`;
+    }
+
+    if (leaderboardLoading || leaderboardError || !leaderboardData || leaderboardData.length === 0) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = leaderboardError ? R64.RED : R64.WHITE;
+        const message = leaderboardLoading
+            ? 'LOADING...'
+            : leaderboardError
+                ? leaderboardError.toUpperCase()
+                : 'NO RUNS YET';
+        ctx.fillText(message, canvas.width / 2, startY + leaderboardHeight / 2, leaderboardWidth - padding * 2);
+    } else {
+        leaderboardData.slice(0, maxEntries).forEach((entry, index) => {
+            const y = startY + lineHeight * (index + 1.5);
+            const lastScore = state.getLastSubmittedScore();
+            const isCurrentPlayer = lastScore &&
+                entry.score === lastScore.score &&
+                Math.round(entry.maxHeight || 0) === Math.round(lastScore.maxHeight || 0) &&
+                entry.displayName === lastScore.displayName;
+
+            if (isCurrentPlayer) {
+                ctx.fillStyle = 'rgba(249, 194, 43, 0.18)';
+                ctx.fillRect(leaderboardX + 4, y - lineHeight / 2 + 2, leaderboardWidth - 8, lineHeight - 4);
+            }
+
+            const displayName = (entry.displayName || 'ANON').toUpperCase();
+            const score = entry.score !== undefined ? String(entry.score) : '-';
+            const maxHeight = entry.maxHeight !== undefined ? `${Math.round(entry.maxHeight)}` : '-';
+            const time = entry.time || '-';
+            const hasReplay = entry.replay && Array.isArray(entry.replay.samples) && entry.replay.samples.length > 0;
+
+            ctx.fillStyle = R64.WHITE;
+            ctx.textAlign = 'left';
+            ctx.fillText(`${index + 1}`, rankX, y);
+
+            let truncatedName = displayName;
+            while (ctx.measureText(truncatedName).width > maxNameWidth && truncatedName.length > 1) {
+                truncatedName = truncatedName.slice(0, -1);
+            }
+            if (truncatedName.length < displayName.length) truncatedName = `${truncatedName.slice(0, -3)}...`;
+            ctx.fillText(truncatedName, nameX, y, maxNameWidth);
+
+            ctx.textAlign = 'right';
+            ctx.fillText(score, scoreEndX, y);
+            ctx.fillText(maxHeight, heightEndX, y);
+            ctx.fillText(time, timeEndX, y);
+            ctx.textAlign = 'center';
+            ctx.fillStyle = hasReplay ? '#8fd3ff' : 'rgba(155, 171, 178, 0.45)';
+            ctx.fillText(hasReplay ? '▶' : '-', replayX, y);
+
+            if (hasReplay) {
+                leaderboardReplayHitboxes.push({
+                    x: replayX - 18,
+                    y: y - lineHeight / 2,
+                    width: 36,
+                    height: lineHeight,
+                    entry
+                });
+            }
+        });
+    }
+
+    ui.showGameOverControls();
+}
+
 // --- Draw Player ---
 function drawPlayer(player) {
     if (player.visible === false) return;
@@ -539,64 +818,204 @@ function getReplayPlatformPosition(platform, timeMs) {
     return { x, replayHeight };
 }
 
+function getReplayView(replay) {
+    const sourceWidth = Math.max(1, replay.canvasWidth || canvas.width);
+    const sourceHeight = Math.max(1, replay.canvasHeight || canvas.height);
+    const sourceLooksMobile = sourceHeight > sourceWidth * 1.12 && sourceWidth <= 900;
+    const isMobileReplay = replay.isMobileRun === true ||
+        replay.viewportProfile === 'mobile' ||
+        sourceLooksMobile;
+
+    if (!isMobileReplay) {
+        return {
+            x: 0,
+            y: 0,
+            width: canvas.width,
+            height: canvas.height,
+            sourceWidth,
+            sourceHeight,
+            scaleX: canvas.width / sourceWidth,
+            scaleY: canvas.height / sourceHeight,
+            spriteScale: Math.min(canvas.width / sourceWidth, canvas.height / sourceHeight),
+            isMobileReplay: false,
+            isLetterboxed: false
+        };
+    }
+
+    const scale = Math.min(canvas.width / sourceWidth, canvas.height / sourceHeight);
+    const width = Math.round(sourceWidth * scale);
+    const height = Math.round(sourceHeight * scale);
+    return {
+        x: Math.round((canvas.width - width) / 2),
+        y: Math.round((canvas.height - height) / 2),
+        width,
+        height,
+        sourceWidth,
+        sourceHeight,
+        scaleX: scale,
+        scaleY: scale,
+        spriteScale: scale,
+        isMobileReplay: true,
+        isLetterboxed: width < canvas.width - 2 || height < canvas.height - 2
+    };
+}
+
+function drawReplayLetterbox(view) {
+    if (!view.isLetterboxed) return;
+
+    ctx.save();
+    ctx.fillStyle = '#000000';
+    if (view.x > 0) {
+        ctx.fillRect(0, 0, view.x, canvas.height);
+        ctx.fillRect(view.x + view.width, 0, canvas.width - view.x - view.width, canvas.height);
+    }
+    if (view.y > 0) {
+        ctx.fillRect(0, 0, canvas.width, view.y);
+        ctx.fillRect(0, view.y + view.height, canvas.width, canvas.height - view.y - view.height);
+    }
+    ctx.strokeStyle = 'rgba(199, 220, 208, 0.28)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(view.x + 1, view.y + 1, view.width - 2, view.height - 2);
+    ctx.restore();
+}
+
+function clipToReplayView(view) {
+    ctx.beginPath();
+    ctx.rect(view.x, view.y, view.width, view.height);
+    ctx.clip();
+}
+
+function isReplayPlatformTooOld(replayPlatform, sample, timeMs) {
+    const currentHeight = sample.height || 0;
+    const platformHeight = replayPlatform.height || 0;
+    const hasExpiredLikeGameplay = timeMs - (replayPlatform.time || 0) > 6500 && platformHeight < currentHeight - 25;
+    return hasExpiredLikeGameplay || platformHeight < currentHeight - 120;
+}
+
+function drawReplayFallbackPlatform(view, sample, playerX, playerY, playerDrawWidth, playerDrawHeight) {
+    if ((sample.height || 0) > 3 || sample.groundedPlatformId !== null) return;
+
+    const fallbackWidth = Math.min(180 * view.scaleX, Math.max(110, view.width * 0.32));
+    const fallbackHeight = 20 * view.scaleY;
+    const platformX = Math.max(
+        view.x + 12,
+        Math.min(view.x + view.width - fallbackWidth - 12, playerX + playerDrawWidth / 2 - fallbackWidth / 2)
+    );
+    const platformY = Math.min(view.y + view.height - fallbackHeight - 12, playerY + playerDrawHeight + 1);
+    drawPlatform({
+        type: 'normal',
+        x: platformX,
+        y: platformY,
+        width: fallbackWidth,
+        height: fallbackHeight,
+        alpha: 1,
+        color: R64.BASE_PLATFORM_RED,
+        middleColor: R64.MIDDLE_PLATFORM_RED,
+        middleSection: {
+            x: platformX + fallbackWidth * 0.35,
+            width: fallbackWidth * 0.3
+        }
+    });
+}
+
 function drawReplay() {
     const viewer = state.getReplayViewer();
     const sample = state.getReplaySampleAt(viewer?.time || 0);
     const replay = viewer?.replay;
     if (!viewer || !sample || !replay) return;
 
-    const sourceWidth = replay.canvasWidth || canvas.width;
-    const sourceHeight = replay.canvasHeight || canvas.height;
-    const scaleX = canvas.width / sourceWidth;
-    const scaleY = canvas.height / sourceHeight;
-    const playerX = sample.xRatio * canvas.width - player.width / 2;
-    let playerY = (sample.yRatio ?? 0.4) * canvas.height - player.height / 2;
+    const view = getReplayView(replay);
+    drawReplayLetterbox(view);
+
+    const sourceWidth = view.sourceWidth;
+    const sourceHeight = view.sourceHeight;
+    const scaleX = view.scaleX;
+    const scaleY = view.scaleY;
+    const spriteScale = Math.max(0.35, view.spriteScale || 1);
+    const playerDrawWidth = player.width * spriteScale;
+    const playerDrawHeight = player.height * spriteScale;
+    let playerX = view.x + sample.xRatio * sourceWidth * scaleX - playerDrawWidth / 2;
+    let playerY = view.y + (sample.yRatio ?? 0.4) * sourceHeight * scaleY - playerDrawHeight / 2;
+    const compactReplay = isCompactHUD() || view.width < 720;
+    if (compactReplay) {
+        const topSafe = view.y + 96 * scaleY;
+        const bottomSafe = Math.max(topSafe + 60 * scaleY, view.y + view.height - 220 * scaleY);
+        playerY = Math.max(topSafe, Math.min(bottomSafe, playerY));
+    }
     const cameraDrop = (sample.cameraDrop || 0) * scaleY;
     const replayPlatformScreenY = new Map();
+    const replayPlatformScreenX = new Map();
+    const replayPlatformData = new Map();
+    let visiblePlatformCount = 0;
+
+    ctx.save();
+    clipToReplayView(view);
 
     const platforms = state.getReplayPlatforms(replay);
     platforms.forEach(replayPlatform => {
         if (replayPlatform.time > viewer.time + 200) return;
+        if (isReplayPlatformTooOld(replayPlatform, sample, viewer.time)) return;
 
         const moved = getReplayPlatformPosition(replayPlatform, viewer.time);
-        const platformY = playerY + player.height + (sample.height - moved.replayHeight) * 10 - cameraDrop;
+        const platformY = playerY + playerDrawHeight + (sample.height - moved.replayHeight) * 10 * scaleY - cameraDrop;
+        const platformX = view.x + moved.x * scaleX;
         replayPlatformScreenY.set(replayPlatform.id, platformY);
-        if (platformY < -60 || platformY > canvas.height + 80) return;
+        replayPlatformScreenX.set(replayPlatform.id, platformX);
+        replayPlatformData.set(replayPlatform.id, replayPlatform);
+        if (platformY < view.y - 60 || platformY > view.y + view.height + 80) return;
 
         drawPlatform({
             type: replayPlatform.type || 'normal',
-            x: moved.x * scaleX,
+            x: platformX,
             y: platformY,
             width: replayPlatform.width * scaleX,
-            height: 20,
+            height: 20 * scaleY,
             alpha: 1,
             color: R64.BASE_PLATFORM_RED,
             middleColor: R64.MIDDLE_PLATFORM_RED,
             middleSection: {
-                x: moved.x * scaleX + replayPlatform.width * scaleX * 0.35,
+                x: view.x + moved.x * scaleX + replayPlatform.width * scaleX * 0.35,
                 width: replayPlatform.width * scaleX * 0.3
             }
         });
+        visiblePlatformCount++;
     });
 
     if (sample.groundedPlatformId !== null && replayPlatformScreenY.has(sample.groundedPlatformId)) {
-        playerY = replayPlatformScreenY.get(sample.groundedPlatformId) - player.height - 1;
+        const groundedPlatform = replayPlatformData.get(sample.groundedPlatformId);
+        const groundedX = replayPlatformScreenX.get(sample.groundedPlatformId);
+        const offsetRatio = Number.isFinite(sample.groundedOffsetRatio) ? sample.groundedOffsetRatio : 0.5;
+        if (groundedPlatform && Number.isFinite(groundedX)) {
+            playerX = groundedX + groundedPlatform.width * scaleX * offsetRatio - playerDrawWidth / 2;
+        }
+        playerY = replayPlatformScreenY.get(sample.groundedPlatformId) - playerDrawHeight - 1;
     }
 
     if (sample.visible !== false) {
-        drawPlayerSpriteAt(playerX, playerY, sample.facing || 1, 1, null);
+        if (visiblePlatformCount === 0) {
+            drawReplayFallbackPlatform(view, sample, playerX, playerY, playerDrawWidth, playerDrawHeight);
+        }
+        drawPlayerSpriteAt(playerX, playerY, sample.facing || 1, 1, null, spriteScale);
     }
     drawDeathParticles();
+    ctx.restore();
+
+    const edge = compactReplay ? 12 : 20;
+    const replayFont = compactReplay ? Math.min(17, Math.max(13, Math.round(view.width * 0.04))) : 20;
+    const replayLineHeight = compactReplay ? Math.round(replayFont * 1.55) : 28;
+    const hudLeft = view.x + edge;
+    const hudRight = view.x + view.width - edge;
+    const hudWidth = Math.max(1, view.width - edge * 2);
 
     ctx.fillStyle = 'rgba(199, 220, 208, 0.9)';
-    ctx.font = '20px Petitinho';
+    ctx.font = `${replayFont}px Petitinho`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(`REPLAY: ${(viewer.entry?.displayName || 'PLAYER').toUpperCase()}`, 20, 20);
-    ctx.fillText(`SCORE: ${viewer.entry?.score ?? replay.score ?? 0}`, 20, 48);
+    ctx.fillText(`REPLAY: ${(viewer.entry?.displayName || 'PLAYER').toUpperCase()}`, hudLeft, view.y + edge, hudWidth * 0.58);
+    ctx.fillText(`SCORE: ${viewer.entry?.score ?? replay.score ?? 0}`, hudLeft, view.y + edge + replayLineHeight, hudWidth * 0.45);
     ctx.textAlign = 'right';
-    ctx.fillText(`HEIGHT: ${Math.round(sample.height)} M`, canvas.width - 20, 20);
-    ctx.fillText(`${formatTime(viewer.time, true)}`, canvas.width - 20, 48);
+    ctx.fillText(`HEIGHT: ${Math.round(sample.height)} M`, hudRight, view.y + edge, hudWidth * 0.42);
+    ctx.fillText(`${formatTime(viewer.time, true)}`, hudRight, view.y + edge + replayLineHeight, hudWidth * 0.42);
 }
 
 function drawDeathParticles() {
@@ -634,7 +1053,7 @@ export function draw(player) {
         stars.forEach(star => {
             ctx.globalAlpha = star.alpha;
             ctx.fillStyle = star.color;
-            ctx.fillRect(star.x, star.y, star.size, star.size);
+            ctx.fillRect(Math.round(star.x), Math.round(star.y), star.size, star.size);
         });
         ctx.globalAlpha = 1.0;
     }
@@ -676,17 +1095,13 @@ export function draw(player) {
     // } // REMOVE Corresponding closing brace
 
     // Draw HUD if Playing or GameOver
-    if (currentGameState === state.GameState.Playing || currentGameState === state.GameState.Dying || currentGameState === state.GameState.GameOver) {
+    if (currentGameState === state.GameState.Playing || currentGameState === state.GameState.Dying) {
         drawHUD(player);
     }
 
     // Draw Game Over specifics (leaderboard, etc.)
     if (currentGameState === state.GameState.GameOver) {
-        // Trigger fetch if needed
-        if (!leaderboardLoading && leaderboardData === null && leaderboardError === null) {
-             fetchLeaderboard();
-        }
-        drawGameOver(); // This function draws the Game Over text & leaderboard box/content
+        drawGameOver();
     } else {
         // Hide HTML controls if not in game over state
         ui.hideGameOverControls();

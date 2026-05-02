@@ -1,10 +1,10 @@
 // This file will handle keyboard and gamepad input 
-import * as state from './state.js';
-import * as audio from './audio.js';
-import * as ui from './ui.js';
-import { player } from './entities.js';
-import { AXIS_DEADZONE, PLAYER_JUMP_POWER, PLAYER_DASH_POWER, PLAYER_DASH_DURATION, PLAYER_DASH_COOLDOWN, PLAYER_GRAVITY } from './constants.js';
-import { getPlatforms } from './state.js'; // Import getPlatforms
+import * as state from './state.js?v=mobile-portrait-29';
+import * as audio from './audio.js?v=mobile-portrait-29';
+import * as ui from './ui.js?v=mobile-portrait-29';
+import { player } from './entities.js?v=mobile-portrait-29';
+import { AXIS_DEADZONE, PLAYER_JUMP_POWER, PLAYER_DASH_POWER, PLAYER_DASH_DURATION, PLAYER_DASH_COOLDOWN, PLAYER_GRAVITY } from './constants.js?v=mobile-portrait-29';
+import { getPlatforms } from './state.js?v=mobile-portrait-29'; // Import getPlatforms
 
 // --- Input State (shared within this module) ---
 export const keys = {
@@ -15,6 +15,9 @@ export const keys = {
 };
 
 let pauseStartTime = 0; // Track when pause began
+let joystickPointerId = null;
+let jumpPointerId = null;
+let orientationLockRequested = false;
 
 // Navigation state for pause menu
 const gamepadNavState = {
@@ -99,6 +102,141 @@ function handleKeyUp(e) {
         case 'KeyQ': break; 
         case 'KeyE': break;
     }
+}
+
+function isTouchGameplayActive() {
+    return state.getCurrentGameState() === state.GameState.Playing;
+}
+
+function requestPortraitLock() {
+    if (orientationLockRequested) return;
+    orientationLockRequested = true;
+    try {
+        screen.orientation?.lock?.('portrait-primary')?.catch(() => {});
+    } catch (error) {
+        // Browser support varies, especially on iPhone Safari.
+    }
+}
+
+function unlockAudioFromTouch() {
+    if (!state.getAudioInitialized()) {
+        audio.initializeAudio();
+    }
+}
+
+function updateJoystickFromPointer(event, stick, knob) {
+    const rect = stick.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const maxDistance = rect.width * 0.34;
+    const rawDx = event.clientX - centerX;
+    const rawDy = event.clientY - centerY;
+    const distance = Math.hypot(rawDx, rawDy);
+    const scale = distance > maxDistance ? maxDistance / distance : 1;
+    const dx = rawDx * scale;
+    const dy = rawDy * scale;
+    const normalizedX = dx / maxDistance;
+
+    knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    keys.left = normalizedX < -0.28;
+    keys.right = normalizedX > 0.28;
+}
+
+function resetJoystick(knob) {
+    joystickPointerId = null;
+    keys.left = false;
+    keys.right = false;
+    if (knob) knob.style.transform = 'translate(-50%, -50%)';
+}
+
+function setupFirstTouchAudioUnlock() {
+    const unlock = () => {
+        unlockAudioFromTouch();
+        document.removeEventListener('pointerdown', unlock);
+        document.removeEventListener('touchstart', unlock);
+    };
+    document.addEventListener('pointerdown', unlock, { passive: true });
+    document.addEventListener('touchstart', unlock, { passive: true });
+}
+
+function setupTouchControls() {
+    const stick = document.getElementById('moveStick');
+    const knob = document.getElementById('moveStickKnob');
+    const jumpButton = document.getElementById('jumpButton');
+    const pauseButton = document.getElementById('mobilePauseButton');
+    const mobileControls = document.getElementById('mobileControls');
+    if (!stick || !knob || !jumpButton || !mobileControls) return;
+
+    mobileControls.addEventListener('contextmenu', (event) => event.preventDefault());
+
+    stick.addEventListener('pointerdown', (event) => {
+        if (!isTouchGameplayActive() || joystickPointerId !== null) return;
+        event.preventDefault();
+        requestPortraitLock();
+        unlockAudioFromTouch();
+        joystickPointerId = event.pointerId;
+        stick.setPointerCapture?.(event.pointerId);
+        updateJoystickFromPointer(event, stick, knob);
+    });
+
+    stick.addEventListener('pointermove', (event) => {
+        if (event.pointerId !== joystickPointerId) return;
+        event.preventDefault();
+        updateJoystickFromPointer(event, stick, knob);
+    });
+
+    const endJoystick = (event) => {
+        if (event.pointerId !== joystickPointerId) return;
+        event.preventDefault();
+        stick.releasePointerCapture?.(event.pointerId);
+        joystickPointerId = null;
+        keys.left = false;
+        keys.right = false;
+        knob.style.transform = 'translate(-50%, -50%)';
+    };
+
+    stick.addEventListener('pointerup', endJoystick);
+    stick.addEventListener('pointercancel', endJoystick);
+    stick.addEventListener('lostpointercapture', () => resetJoystick(knob));
+
+    jumpButton.addEventListener('pointerdown', (event) => {
+        if (!isTouchGameplayActive() || jumpPointerId !== null) return;
+        event.preventDefault();
+        requestPortraitLock();
+        unlockAudioFromTouch();
+        jumpPointerId = event.pointerId;
+        jumpButton.setPointerCapture?.(event.pointerId);
+        jumpButton.classList.add('is-pressed');
+        keys.up = true;
+        triggerJump();
+    });
+
+    const endJump = (event) => {
+        if (event.pointerId !== jumpPointerId) return;
+        event.preventDefault();
+        jumpButton.releasePointerCapture?.(event.pointerId);
+        jumpPointerId = null;
+        keys.up = false;
+        jumpButton.classList.remove('is-pressed');
+    };
+
+    jumpButton.addEventListener('pointerup', endJump);
+    jumpButton.addEventListener('pointercancel', endJump);
+    jumpButton.addEventListener('lostpointercapture', () => {
+        jumpPointerId = null;
+        keys.up = false;
+        jumpButton.classList.remove('is-pressed');
+    });
+
+    pauseButton?.addEventListener('pointerdown', (event) => {
+        if (state.getCurrentGameState() !== state.GameState.Playing) return;
+        event.preventDefault();
+        unlockAudioFromTouch();
+        keys.left = false;
+        keys.right = false;
+        keys.up = false;
+        togglePause();
+    });
 }
 
 // --- Gamepad Input Handling ---
@@ -202,8 +340,8 @@ export function handleGamepadInput() {
                     checkbox.checked = !checkbox.checked;
                     checkbox.dispatchEvent(new Event('change', { bubbles:true }));
                 }
-            } else if (focusedItem.id === 'optionsBackButton' && activate) {
-                console.log('  Activate Back Button (Options)!');
+            } else if ((focusedItem.id === 'optionsBackButton' || focusedItem.id === 'aboutButton' || focusedItem.id === 'aboutCloseButton') && activate) {
+                console.log('  Activate Button (Options)!');
                 focusedItem.click(); 
             }
         }
@@ -378,7 +516,7 @@ export function handleGamepadInput() {
 }
 
 // --- Toggle Pause Function ---
-function togglePause() {
+export function togglePause() {
     const currentState = state.getCurrentGameState();
     const now = performance.now(); // Use performance.now() for higher precision timing
 
@@ -418,7 +556,7 @@ function togglePause() {
 // --- Action Triggers (called by both keyboard/gamepad) ---
 function triggerJump() {
     if (player.jumpsLeft > 0) {
-        player.velocityY = -PLAYER_JUMP_POWER;
+        player.velocityY = -(player.jumpPower || PLAYER_JUMP_POWER);
         player.isGrounded = false;
         player.jumpsLeft--;
     }
@@ -441,7 +579,7 @@ function triggerDash(direction) {
         // Set timeout to end dash
         setTimeout(() => {
             player.isDashing = false;
-            player.gravity = PLAYER_GRAVITY; // Restore gravity
+            player.gravity = player.baseGravity || PLAYER_GRAVITY; // Restore gravity
             player.velocityX = 0; // <<< ADD THIS LINE TO STOP HORIZONTAL MOVEMENT
             console.log("Dash ended.");
         }, PLAYER_DASH_DURATION);
@@ -452,5 +590,7 @@ function triggerDash(direction) {
 export function initializeInput() {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    setupFirstTouchAudioUnlock();
+    setupTouchControls();
     console.log("Input listeners initialized.");
 } 

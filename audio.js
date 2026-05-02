@@ -1,4 +1,4 @@
-import * as state from './state.js';
+import * as state from './state.js?v=mobile-portrait-29';
 // import { player } from './entities.js'; // No longer needed here
 
 // This file will handle audio initialization and playback 
@@ -9,6 +9,12 @@ let sfxLandPlayer;
 let sfxMiddleLandPlayer;
 let sfxGameOverPlayer;
 let sfxPlayerDeathPlayer;
+let audioContext;
+let sfxGainNode;
+let musicSourceNode;
+let musicGainNode;
+let sfxBufferLoadPromise = null;
+const sfxBuffers = new Map();
 
 // Store all SFX players for easier volume control
 let sfxPlayers = [];
@@ -16,6 +22,7 @@ let sfxPlayers = [];
 // --- Volume Control ---
 let musicVolume = 0.6; // Start with default volume (0.0 to 1.0)
 let sfxVolume = 0.6;   // Start with default volume (0.0 to 1.0)
+let musicDucked = false;
 
 // --- Music Tracks ---
 const musicTracks = [
@@ -34,12 +41,125 @@ const sfxLandPath = 'Audio/SFX/Landing1.wav';
 const sfxMiddleLandPath = 'Audio/SFX/middleBlock.wav';
 const sfxGameOverPath = 'Audio/SFX/gameover.wav';
 const sfxPlayerDeathPath = 'Audio/SFX/PlayerDeath.wav';
+const SFX_DEFINITIONS = {
+    land: sfxLandPath,
+    middleLand: sfxMiddleLandPath,
+    gameOver: sfxGameOverPath
+};
+
+function getAudioContext() {
+    if (audioContext) return audioContext;
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) return null;
+
+    try {
+        audioContext = new AudioContextCtor({ latencyHint: 'interactive' });
+    } catch (error) {
+        audioContext = new AudioContextCtor();
+    }
+
+    sfxGainNode = audioContext.createGain();
+    sfxGainNode.gain.value = sfxVolume;
+    sfxGainNode.connect(audioContext.destination);
+    return audioContext;
+}
+
+function setupMusicGainNode() {
+    if (!musicPlayer || musicSourceNode) return;
+
+    const context = getAudioContext();
+    if (!context) return;
+
+    try {
+        musicSourceNode = context.createMediaElementSource(musicPlayer);
+        musicGainNode = context.createGain();
+        musicSourceNode.connect(musicGainNode);
+        musicGainNode.connect(context.destination);
+        applyMusicVolume();
+    } catch (error) {
+        console.warn("Web Audio music gain unavailable; falling back to media volume.", error);
+    }
+}
+
+function decodeAudioBuffer(context, arrayBuffer) {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const done = (buffer) => {
+            if (settled) return;
+            settled = true;
+            resolve(buffer);
+        };
+        const fail = (error) => {
+            if (settled) return;
+            settled = true;
+            reject(error);
+        };
+
+        const decodePromise = context.decodeAudioData(arrayBuffer, done, fail);
+        if (decodePromise?.then) {
+            decodePromise.then(done, fail);
+        }
+    });
+}
+
+async function loadSfxBuffers() {
+    const context = getAudioContext();
+    if (!context) return false;
+
+    await Promise.all(Object.entries(SFX_DEFINITIONS).map(async ([name, path]) => {
+        const response = await fetch(path, { cache: 'force-cache' });
+        if (!response.ok) throw new Error(`Could not load ${path}: ${response.status}`);
+        const arrayBuffer = await response.arrayBuffer();
+        sfxBuffers.set(name, await decodeAudioBuffer(context, arrayBuffer));
+    }));
+
+    return true;
+}
+
+function ensureSfxBuffersLoading() {
+    if (!sfxBufferLoadPromise) {
+        sfxBufferLoadPromise = loadSfxBuffers().catch(error => {
+            console.warn("Web Audio SFX buffers unavailable; falling back where safe.", error);
+            return false;
+        });
+    }
+    return sfxBufferLoadPromise;
+}
+
+function playBufferedSfx(name) {
+    if (!state.getAudioInitialized()) return false;
+    const context = getAudioContext();
+    const buffer = sfxBuffers.get(name);
+    if (!context || !sfxGainNode || !buffer) {
+        ensureSfxBuffersLoading();
+        return false;
+    }
+
+    if (context.state === 'suspended') {
+        context.resume().catch(() => {});
+    }
+
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(sfxGainNode);
+    source.start(0);
+    return true;
+}
+
+function playFallbackAudio(player, label) {
+    if (!state.getAudioInitialized() || !player) return;
+    player.currentTime = 0;
+    player.play().catch(e => {
+        console.error(`Error playing ${label} SFX:`, e);
+    });
+}
 
 // --- Audio Setup ---
 export function setupAudioPlayers() {
     musicPlayer = new Audio();
     musicPlayer.loop = false;
-    musicPlayer.volume = musicVolume; // Use stored volume
+    musicPlayer.preload = 'auto';
+    applyMusicVolume(); // Use stored volume
     
     sfxLandPlayer = new Audio(sfxLandPath);
     sfxMiddleLandPlayer = new Audio(sfxMiddleLandPath);
@@ -49,6 +169,9 @@ export function setupAudioPlayers() {
     // Assign initial volume and add to array
     sfxPlayers = [sfxLandPlayer, sfxMiddleLandPlayer, sfxGameOverPlayer, sfxPlayerDeathPlayer];
     sfxPlayers.forEach(player => player.volume = sfxVolume);
+    getAudioContext();
+    setupMusicGainNode();
+    ensureSfxBuffersLoading();
 
     // Add event listener to play next track when one ends
     musicPlayer.addEventListener('ended', playNextTrack);
@@ -59,11 +182,6 @@ export function setupAudioPlayers() {
     sfxMiddleLandPlayer.addEventListener('error', (e) => console.error("SFX Middle Land Error:", e));
     sfxGameOverPlayer.addEventListener('error', (e) => console.error("SFX Game Over Error:", e));
     sfxPlayerDeathPlayer.addEventListener('error', (e) => console.error("SFX Player Death Error:", e));
-    musicPlayer.addEventListener('canplaythrough', () => console.log("Music can play through:", musicPlayer.src));
-    sfxLandPlayer.addEventListener('canplaythrough', () => console.log("SFX Land can play through."));
-    sfxMiddleLandPlayer.addEventListener('canplaythrough', () => console.log("SFX Middle Land can play through."));
-    sfxGameOverPlayer.addEventListener('canplaythrough', () => console.log("SFX Game Over can play through."));
-    sfxPlayerDeathPlayer.addEventListener('canplaythrough', () => console.log("SFX Player Death can play through."));
     console.log("Audio players setup with listeners.")
 }
 
@@ -89,12 +207,26 @@ function playNextTrack() {
 export function setMusicVolume(level) {
     // Ensure level is between 0 and 1
     musicVolume = Math.max(0, Math.min(1, level));
-    if (musicPlayer) {
-        musicPlayer.volume = musicVolume;
-    }
+    applyMusicVolume();
     console.log(`Music volume set to: ${(musicVolume * 100).toFixed(0)}%`);
     // Store preference
     localStorage.setItem('musicVolumePref', musicVolume);
+}
+
+function applyMusicVolume() {
+    if (!musicPlayer) return;
+    const effectiveVolume = musicVolume * (musicDucked ? 0.4 : 1);
+    if (musicGainNode) {
+        const context = getAudioContext();
+        musicPlayer.volume = 1;
+        if (context) {
+            musicGainNode.gain.setTargetAtTime(effectiveVolume, context.currentTime, 0.01);
+        } else {
+            musicGainNode.gain.value = effectiveVolume;
+        }
+        return;
+    }
+    musicPlayer.volume = effectiveVolume;
 }
 
 export function setSfxVolume(level) {
@@ -105,6 +237,9 @@ export function setSfxVolume(level) {
             player.volume = sfxVolume;
         }
     });
+    if (sfxGainNode) {
+        sfxGainNode.gain.value = sfxVolume;
+    }
     console.log(`SFX volume set to: ${(sfxVolume * 100).toFixed(0)}%`);
     // Store preference
     localStorage.setItem('sfxVolumePref', sfxVolume);
@@ -138,20 +273,11 @@ export function playLandingSound(isMiddle = false) {
         return;
     }
 
-    // Always play the standard landing sound
-    console.log(`Attempting to play standard landing sound.`);
-    sfxLandPlayer.currentTime = 0;
-    sfxLandPlayer.play().catch(e => {
-        console.error(`Error playing standard landing SFX:`, e);
-    });
+    playBufferedSfx('land');
 
     // Play the middle landing sound *additionally* if applicable
     if (isMiddle) {
-        console.log(`Attempting to play middle landing sound additionally.`);
-        sfxMiddleLandPlayer.currentTime = 0;
-        sfxMiddleLandPlayer.play().catch(e => {
-            console.error(`Error playing middle landing SFX:`, e);
-        });
+        playBufferedSfx('middleLand');
     }
 }
 
@@ -165,16 +291,16 @@ export function pauseMusic() {
 // NEW: Lower/Restore Volume functions
 export function lowerMusicVolume() {
     if (musicPlayer) {
-        // Optional: Could lower relative to current musicVolume, 
-        // or just set to a fixed low value for pause
-        musicPlayer.volume = musicVolume * 0.4; 
-        console.log(`Lowering music volume temporarily to ${musicPlayer.volume}`);
+        musicDucked = true;
+        applyMusicVolume();
+        console.log(`Lowering music volume temporarily to ${musicVolume * 0.4}`);
     }
 }
 
 export function restoreMusicVolume() {
     if (musicPlayer) {
-        musicPlayer.volume = musicVolume; // Restore to the user-set level
+        musicDucked = false;
+        applyMusicVolume();
         console.log(`Restoring music volume to user setting: ${musicVolume}`);
     }
 }
@@ -198,8 +324,11 @@ export function startMusic() {
     const trackPath = `Audio/Music/${currentTrackName}.mp3`;
     console.log(`Attempting to play track: ${currentTrackName} from ${trackPath}`);
 
-    musicPlayer.src = trackPath;
-    restoreMusicVolume(); // Ensure volume is at original level when starting/resuming track
+    if (!musicPlayer.src || !musicPlayer.src.endsWith(trackPath)) {
+        musicPlayer.src = trackPath;
+    }
+    setupMusicGainNode();
+    applyMusicVolume();
     musicPlayer.play().then(() => {
         console.log(`musicPlayer.play() promise resolved for ${currentTrackName}.`);
         state.setCurrentTrackInfo(currentTrackName); // Update state for HUD
@@ -214,6 +343,16 @@ export function startMusic() {
 export function initializeAudio() {
     if (state.getAudioInitialized()) {
         console.log("Audio already initialized.");
+        const context = getAudioContext();
+        setupMusicGainNode();
+        if (context?.state === 'suspended') {
+            context.resume().catch(err => {
+                console.warn("Audio context resume blocked until user interaction:", err);
+            });
+        }
+        if (musicPlayer && musicPlayer.paused) {
+            startMusic();
+        }
         return;
     }
     console.log("Running initializeAudio (to unlock context & start music)..." );
@@ -223,18 +362,20 @@ export function initializeAudio() {
         return;
     }
 
-    // Attempt to unlock via a user-gesture-triggered SFX play/pause.
-    // If Chrome blocks this on page load, leave audio uninitialized so a later
-    // click/key press can retry successfully.
-    const unlockPromise = sfxLandPlayer.play().then(() => {
-        sfxLandPlayer.pause();
-        sfxLandPlayer.currentTime = 0;
-    });
+    const context = getAudioContext();
+    setupMusicGainNode();
+    const unlockPromise = context
+        ? context.resume()
+        : sfxLandPlayer.play().then(() => {
+            sfxLandPlayer.pause();
+            sfxLandPlayer.currentTime = 0;
+        });
 
     unlockPromise.then(() => {
         if (!state.getAudioInitialized()) {
             state.setAudioInitialized(true);
             console.log("Audio context unlocked.");
+            ensureSfxBuffersLoading();
 
             // Shuffle and start the first track immediately after unlock
             shuffledTracks = [...musicTracks]; // Copy original list
@@ -258,11 +399,9 @@ export function playGameOverSound() {
         console.warn("Cannot play Game Over sound: Audio not initialized or player not set up.");
         return;
     }
-    console.log("Attempting to play Game Over sound.");
-    sfxGameOverPlayer.currentTime = 0;
-    sfxGameOverPlayer.play().catch(e => {
-        console.error(`Error playing Game Over SFX:`, e);
-    });
+    if (!playBufferedSfx('gameOver')) {
+        playFallbackAudio(sfxGameOverPlayer, 'Game Over');
+    }
 }
 
 export function playPlayerDeathSound() {
@@ -270,9 +409,7 @@ export function playPlayerDeathSound() {
         console.warn("Cannot play Player Death sound: Audio not initialized or player not set up.");
         return;
     }
-    console.log("Attempting to play Player Death sound.");
-    sfxPlayerDeathPlayer.currentTime = 0;
-    sfxPlayerDeathPlayer.play().catch(e => {
-        console.error(`Error playing Player Death SFX:`, e);
-    });
+    if (!playBufferedSfx('playerDeath')) {
+        playFallbackAudio(sfxPlayerDeathPlayer, 'Player Death');
+    }
 }

@@ -1,9 +1,9 @@
-import * as state from './state.js';
-import * as graphics from './graphics.js';
-import * as input from './input.js';
-import * as audio from './audio.js';
-import { player, createPlatform } from './entities.js';
-import * as ui from './ui.js'; // Import UI
+import * as state from './state.js?v=mobile-portrait-29';
+import * as graphics from './graphics.js?v=mobile-portrait-29';
+import * as input from './input.js?v=mobile-portrait-29';
+import * as audio from './audio.js?v=mobile-portrait-29';
+import { player, createPlatform } from './entities.js?v=mobile-portrait-29';
+import * as ui from './ui.js?v=mobile-portrait-29'; // Import UI
 import {
     MIN_VERT_GAP, MAX_VERT_GAP, PLATFORM_START_WIDTH, PLATFORM_EARLY_MIN_WIDTH, PLATFORM_MIN_WIDTH,
     PLATFORM_WIDTH_DIFFICULTY_HEIGHT, PLAYER_GRAVITY, PLAYER_JUMP_POWER, PLAYER_SPEED,
@@ -12,10 +12,7 @@ import {
     PLATFORM_PROBABILITY, PLATFORM_MIDDLE_THRESHOLD,
     PLATFORM_FLASH_DURATION, PLATFORM_FLASH_INTERVAL_MAX, PLATFORM_FLASH_INTERVAL_MIN,
     PLATFORM_FLASH_START_DELAY, PLAYER_AIR_CONTROL_FACTOR
-} from './constants.js';
-
-// DEBUG: Verify state import
-console.log("Imported state object:", state);
+} from './constants.js?v=mobile-portrait-29';
 
 // --- Game Variables ---
 let animationFrameId = null;
@@ -31,7 +28,22 @@ const RESPAWN_PLATFORM_BOTTOM_OFFSET = 150;
 const SPAWN_PADDING = 50;
 const MAX_SPAWN_ATTEMPTS = 24;
 
+function isMobilePlayfield() {
+    return graphics.canvas.width <= 720 || window.matchMedia?.('(pointer: coarse)').matches;
+}
+
+function getStartingPlatformBottomOffset() {
+    if (!isMobilePlayfield()) return STARTING_PLATFORM_BOTTOM_OFFSET;
+    return Math.max(170, Math.min(230, Math.round(graphics.canvas.height * 0.22)));
+}
+
+function getRespawnPlatformBottomOffset() {
+    if (!isMobilePlayfield()) return RESPAWN_PLATFORM_BOTTOM_OFFSET;
+    return Math.max(190, Math.min(250, Math.round(graphics.canvas.height * 0.24)));
+}
+
 function recordCurrentReplaySample(force = false, timeOverride = null) {
+    const groundedPlatform = player.groundedOnPlatform || null;
     state.recordRunReplaySample({
         time: typeof timeOverride === 'number' ? timeOverride : state.getElapsedTime(),
         height: getCurrentRunHeight(),
@@ -40,7 +52,10 @@ function recordCurrentReplaySample(force = false, timeOverride = null) {
         facing: player.facing || 1,
         visible: player.visible !== false,
         cameraDrop: deathSequence?.cameraDrop || 0,
-        groundedPlatformId: player.groundedOnPlatform?.id ?? null,
+        groundedPlatformId: groundedPlatform?.id ?? null,
+        groundedOffsetRatio: groundedPlatform
+            ? ((player.x + player.width / 2) - groundedPlatform.x) / Math.max(1, groundedPlatform.width)
+            : null,
         force
     });
 }
@@ -102,17 +117,44 @@ function getPlatformWidthForDifficulty(difficulty) {
     return Math.round(smallestAllowed + (widestAllowed - smallestAllowed) * bias);
 }
 
+function getMobilePhysicsScale() {
+    if (!isMobilePlayfield()) return 1;
+    return Math.max(0.74, Math.min(0.84, graphics.canvas.height / 920));
+}
+
+function getPlayerJumpPower() {
+    return PLAYER_JUMP_POWER * getMobilePhysicsScale();
+}
+
+function getPlayerGravity() {
+    if (!isMobilePlayfield()) return PLAYER_GRAVITY;
+    return PLAYER_GRAVITY * 1.08;
+}
+
+function getPlayerSpeed() {
+    return PLAYER_SPEED * (isMobilePlayfield() ? 0.92 : 1);
+}
+
+function getVerticalPlatformGap() {
+    const scale = isMobilePlayfield() ? getMobilePhysicsScale() : 1;
+    return (MIN_VERT_GAP + Math.random() * (MAX_VERT_GAP - MIN_VERT_GAP)) * scale;
+}
+
 function getReachableEdgeGap(yOffset, difficulty) {
-    const discriminant = (PLAYER_JUMP_POWER * PLAYER_JUMP_POWER) - (2 * PLAYER_GRAVITY * yOffset);
+    const jumpPower = getPlayerJumpPower();
+    const gravity = getPlayerGravity();
+    const speed = getPlayerSpeed();
+    const discriminant = (jumpPower * jumpPower) - (2 * gravity * yOffset);
     const jumpAirFrames = discriminant > 0
-        ? (PLAYER_JUMP_POWER + Math.sqrt(discriminant)) / PLAYER_GRAVITY
-        : PLAYER_JUMP_POWER / PLAYER_GRAVITY;
+        ? (jumpPower + Math.sqrt(discriminant)) / gravity
+        : jumpPower / gravity;
     const dashFrames = (PLAYER_DASH_DURATION / 1000) * 60;
-    const runReach = PLAYER_SPEED * jumpAirFrames;
+    const runReach = speed * jumpAirFrames;
     const dashReach = PLAYER_DASH_POWER * dashFrames;
 
     // Keep the spawn window a little inside the theoretical max so every new block feels fair.
-    return Math.max(175, (runReach + dashReach * 0.8) * (0.88 - difficulty * 0.08));
+    const minReach = isMobilePlayfield() ? 125 : 175;
+    return Math.max(minReach, (runReach + dashReach * 0.8) * (0.88 - difficulty * 0.08));
 }
 
 function getCurrentRunHeight() {
@@ -200,10 +242,7 @@ function playReplayEvents() {
         if (event.type === 'landing') {
             audio.playLandingSound(!!event.middle);
         } else if (event.type === 'death') {
-            graphics.spawnDeathExplosion(
-                (event.xRatio ?? 0.5) * graphics.canvas.width,
-                (event.yRatio ?? 0.68) * graphics.canvas.height
-            );
+            graphics.spawnReplayDeathExplosion(event);
             audio.playPlayerDeathSound();
         } else if (event.type === 'gameover') {
             audio.playGameOverSound();
@@ -284,7 +323,6 @@ function update(dt) {
     if (player.groundedOnPlatform) {
         const deltaYToApply = player.groundedOnPlatform.deltaYThisFrame || 0;
         player.y += deltaYToApply;
-        if (deltaYToApply !== 0) console.log(`Applying prev platform Y delta ${deltaYToApply.toFixed(2)} to player Y from platform ${player.groundedOnPlatform.id}`);
     }
 
     // Apply gravity (only if not dashing)
@@ -301,7 +339,6 @@ function update(dt) {
             // --- Start Flashing Check ---
             if (platform.disappearStartTime && !platform.isFlashing) {
                 if (now >= platform.disappearStartTime) {
-                    console.log(`Platform ${platform.id} starting to flash.`);
                     platform.isFlashing = true;
                     platform.flashStartTime = now;
                     platform.lastFlashToggleTime = now;
@@ -315,7 +352,6 @@ function update(dt) {
 
                 // Check if flashing duration is over
                 if (elapsedFlashTime >= PLATFORM_FLASH_DURATION) {
-                    console.log(`Platform ${platform.id} flashing complete, marking for removal.`);
                     platform.remove = true; // Mark for removal
                     platform.isFlashing = false; // Stop flashing state
                 } else {
@@ -368,7 +404,6 @@ function update(dt) {
                 player.velocityY >= 0) {
 
                 // INITIAL LANDING OCCURRED
-                console.log(`Initial landing detected on platform ${platform.id}`);
                 player.y = platform.y - player.height;
                 player.velocityY = 0;
                 player.isGrounded = true;
@@ -426,7 +461,8 @@ function update(dt) {
         state.recordRunReplayEvent({
             type: 'landing',
             middle: landedOnMiddle,
-            time: state.getElapsedTime()
+            time: state.getElapsedTime(),
+            platformId: currentLandingPlatform?.id ?? null
         });
         audio.playLandingSound(landedOnMiddle);
     }
@@ -573,13 +609,13 @@ function handleGameOver() {
 
     // Show Game Over UI elements
     ui.showGameOverControls();
+    ui.showGameOverLeaderboardLoading(state.getActiveLeaderboardSource());
     ui.setupGameOverFocus();
 
     // Add entry to leaderboard state, then force-refresh the displayed board.
     const playerName = state.getDisplayName() || 'Player';
-    graphics.invalidateLeaderboard();
     state.addLeaderboardEntry(playerName, finalScore, finalHeight, formattedTime)
-        .finally(() => graphics.fetchLeaderboard(true));
+        .finally(() => ui.showGameOverLeaderboard(true, state.getActiveLeaderboardSource()));
 
     // --- NO LONGER NEEDED WITH LOCAL LEADERBOARD ---
     // // Get player ID for PlayFab
@@ -622,11 +658,9 @@ function spawnNewPlatform(basePlatform) {
     }
     // Add more types here if needed
 
-    console.log(`Spawning new platform of type: ${platformType} (rand: ${rand.toFixed(2)}) based on platform ${basePlatform.id}`);
-
     // Vertical position calculation (remains the same)
     const screenHeight = graphics.canvas.height;
-    const yOffset = MIN_VERT_GAP + Math.random() * (MAX_VERT_GAP - MIN_VERT_GAP);
+    const yOffset = getVerticalPlatformGap();
     const newY = basePlatform.y - yOffset;
 
     // Horizontal position calculation WITH overlap/reachability checks
@@ -635,8 +669,9 @@ function spawnNewPlatform(basePlatform) {
     let attempts = 0;
     const newWidth = getPlatformWidthForDifficulty(difficulty);
     const reachableEdgeGap = getReachableEdgeGap(yOffset, difficulty);
-    const minX = SPAWN_PADDING;
-    const maxX = graphics.canvas.width - newWidth - SPAWN_PADDING;
+    const spawnPadding = isMobilePlayfield() ? Math.min(32, SPAWN_PADDING) : SPAWN_PADDING;
+    const minX = spawnPadding;
+    const maxX = graphics.canvas.width - newWidth - spawnPadding;
     const reachableMinX = basePlatform.x - reachableEdgeGap - newWidth;
     const reachableMaxX = basePlatform.x + basePlatform.width + reachableEdgeGap;
     const spawnMinX = clamp(reachableMinX, minX, maxX);
@@ -678,7 +713,6 @@ function spawnNewPlatform(basePlatform) {
                 const overlaps = (newX < existingPlatform.x + existingPlatform.width &&
                                   newX + newWidth > existingPlatform.x);
                 if (overlaps) {
-                    console.log(`Spawn attempt ${attempts}: Proposed X ${newX.toFixed(0)} overlaps with existing platform ${existingPlatform.id} at X ${existingPlatform.x.toFixed(0)}. Retrying.`);
                     needsRetry = true;
                     break; // No need to check other platforms for this attempt
                 }
@@ -697,7 +731,6 @@ function spawnNewPlatform(basePlatform) {
     }
 
     // Create the platform with the validated/final newX
-    console.log(`Final spawn position: X=${newX.toFixed(0)}, Y=${newY.toFixed(0)}, width=${newWidth}, reach=${reachableEdgeGap.toFixed(0)}, difficulty=${difficulty.toFixed(2)}`);
     const newPlatform = createPlatform(newX, newY, platformType, newWidth); // Pass width too
     preparePlatformForReplay(newPlatform, (basePlatform.replayHeight || 0) + yOffset / 10);
     state.addPlatform(newPlatform);
@@ -709,7 +742,7 @@ function resetPlayerState() {
     // Reset properties of the imported player object
     const startingPlatform = createPlatform(
         graphics.canvas.width / 2 - PLATFORM_START_WIDTH / 2,
-        graphics.canvas.height - STARTING_PLATFORM_BOTTOM_OFFSET,
+        graphics.canvas.height - getStartingPlatformBottomOffset(),
         'normal',
         PLATFORM_START_WIDTH,
         true
@@ -730,8 +763,10 @@ function resetPlayerState() {
     player.isDashing = false;
     player.lastDashTime = 0;
     player.facing = 1;
-    player.gravity = PLAYER_GRAVITY; // Ensure gravity is reset if it changes
-    player.speed = PLAYER_SPEED; // Ensure speed is reset if it changes
+    player.jumpPower = getPlayerJumpPower();
+    player.baseGravity = getPlayerGravity();
+    player.gravity = player.baseGravity;
+    player.speed = getPlayerSpeed();
     player.groundedOnPlatform = startingPlatform;
     state.setLastLandedPlatformId(startingPlatform.id);
     deathSequence = null;
@@ -741,7 +776,9 @@ function resetPlayerState() {
     state.setPlatforms([startingPlatform]);
     state.setRunReplayMeta({
         canvasWidth: graphics.canvas.width,
-        canvasHeight: graphics.canvas.height
+        canvasHeight: graphics.canvas.height,
+        isMobileRun: isMobilePlayfield(),
+        viewportProfile: isMobilePlayfield() ? 'mobile' : 'desktop'
     });
     state.recordRunReplayPlatform(startingPlatform);
     spawnNewPlatform(startingPlatform);
@@ -787,7 +824,7 @@ function respawnPlayer() {
 
     if (respawnPlatform) {
         console.log(`SUCCESS: Chosen respawn platform ID: ${respawnPlatform.id} at y=${respawnPlatform.y.toFixed(0)}`);
-        const desiredRespawnPlatformY = graphics.canvas.height - RESPAWN_PLATFORM_BOTTOM_OFFSET;
+        const desiredRespawnPlatformY = graphics.canvas.height - getRespawnPlatformBottomOffset();
         shiftPlatforms(desiredRespawnPlatformY - respawnPlatform.y);
 
         // Restore the platform if it was fading/gone
@@ -807,7 +844,10 @@ function respawnPlayer() {
         player.jumpsLeft = 2;
         player.isDashing = false;
         player.facing = 1;
-        player.gravity = PLAYER_GRAVITY;
+        player.jumpPower = getPlayerJumpPower();
+        player.baseGravity = getPlayerGravity();
+        player.gravity = player.baseGravity;
+        player.speed = getPlayerSpeed();
         player.groundedOnPlatform = respawnPlatform;
         state.setLastLandedPlatformId(respawnPlatform.id);
         recordCurrentReplaySample(true, (lastDeathReplayTime || state.getElapsedTime()) + 1);
@@ -892,6 +932,9 @@ function mainInit() {
     console.log("Main Initialization...");
     graphics.resizeCanvas(); // Resize canvas first
     window.addEventListener('resize', graphics.resizeCanvas);
+    window.addEventListener('orientationchange', () => setTimeout(graphics.resizeCanvas, 80));
+    window.visualViewport?.addEventListener('resize', graphics.resizeCanvas);
+    window.visualViewport?.addEventListener('scroll', graphics.resizeCanvas);
 
     audio.setupAudioPlayers(); // Setup audio elements and listeners
 
