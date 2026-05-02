@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-70';
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-70';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-71';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-71';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({
@@ -892,7 +892,7 @@ const LEADERBOARD_COLLECTION = 'leaderboard'; // Name of Firestore collection
 const LOCAL_LEADERBOARD_KEY = 'zipzip_localLeaderboard';
 const LOCAL_PLAYER_ID_KEY = 'zipzip_localPlayerId';
 const LOCAL_ALIAS_KEY = 'zipzip_localAlias';
-const LEADERBOARD_RESET_VERSION = 'local-fresh-start-20260502';
+const LEADERBOARD_RESET_VERSION = 'reset-all-accounts-20260502';
 const LOCAL_LEADERBOARD_RESET_KEY = `zipzip_${LEADERBOARD_RESET_VERSION}_local`;
 const REMOTE_LEADERBOARD_RESET_KEY = `zipzip_${LEADERBOARD_RESET_VERSION}_remote`;
 const LEADERBOARD_DISPLAY_LIMIT = 100;
