@@ -1,6 +1,9 @@
 @font-face {
     font-family: 'Petitinho';
-    src: url('Fonts/Petitinho.ttf') format('truetype');
+    src: url('Fonts/Petitinho.ttf?v=petitinho-real-1') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: block;
 }
 
 /* Basic Reset */
@@ -24,6 +27,7 @@ html {
     --jump-button-size: 72px;
     --move-control-opacity: 0.5;
     --jump-control-opacity: 0.5;
+    --game-font: 'Petitinho', system-ui, sans-serif;
 }
 
 body {
@@ -32,7 +36,10 @@ body {
         radial-gradient(circle at 82% 10%, rgba(249, 194, 43, 0.11), transparent 24%),
         linear-gradient(145deg, #0a0b10 0%, #241b2b 52%, #05070c 100%);
     color: #e0e0e0; /* Light text */
-    font-family: 'Petitinho', sans-serif; /* USE PETITINHO */
+    font-family: var(--game-font);
+    font-synthesis: none;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: none;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -44,6 +51,16 @@ body {
     width: var(--app-width);
     min-height: var(--app-height);
     max-width: var(--app-width);
+}
+
+button,
+input,
+textarea,
+select,
+label,
+a {
+    font-family: var(--game-font);
+    font-synthesis: none;
 }
 
 #loginStarCanvas {
@@ -378,7 +395,7 @@ body.game-screen-active {
 }
 
 #loginScreen input[type="password"] {
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: var(--game-font);
     font-size: 1.35em;
     line-height: 1;
 }
@@ -500,7 +517,7 @@ body.game-screen-active {
     border-radius: 50%;
     background: conic-gradient(from -45deg, #4285f4 0 25%, #34a853 0 50%, #fbbc05 0 75%, #ea4335 0);
     color: #ffffff;
-    font: 700 15px Arial, sans-serif;
+    font: 700 15px var(--game-font);
 }
 
 .apple-mark {
@@ -511,7 +528,7 @@ body.game-screen-active {
     border-radius: 50%;
     background: #ffffff;
     color: #111318;
-    font: 700 15px Arial, sans-serif;
+    font: 700 15px var(--game-font);
 }
 
 .menu-actions {
