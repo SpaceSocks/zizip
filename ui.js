@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-85';
-import * as audio from './audio.js?v=mobile-portrait-85'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-86';
+import * as audio from './audio.js?v=mobile-portrait-86'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-85';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-86';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-85';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-86';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -23,6 +23,7 @@ const googleAliasInput = document.getElementById('googleAliasInput');
 const googleAliasSaveButton = document.getElementById('googleAliasSaveButton');
 const onlinePlayButton = document.getElementById('onlinePlayButton');
 const quitButton = document.getElementById('quitButton');
+const localLoginButton = document.getElementById('localLoginButton');
 const localPlayButton = document.getElementById('localPlayButton');
 const infoText = document.getElementById('infoText');
 const toggleAuthLink = document.getElementById('toggleAuthLink');
@@ -130,6 +131,7 @@ let sessionPasswordEmail = '';
 let redirectResultHandled = false;
 let pendingGoogleAliasUser = null;
 let initialAuthStateHandled = false;
+let localPlayReady = false;
 
 function clearLegacySavedPassword() {
     localStorage.removeItem(LEGACY_SAVED_PASSWORD_KEY);
@@ -315,13 +317,13 @@ function hideAchievementsPanel() {
 
 function renderAchievementsPanel() {
     if (!achievementsList || !achievementsSummary) return;
-    const hasOnlinePlayer = !!state.getUserId() && !state.isLocalPlayer();
-    const progress = hasOnlinePlayer
+    const hasAchievementPlayer = !!state.getUserId() && (!state.isLocalPlayer() || localPlayReady);
+    const progress = hasAchievementPlayer
         ? state.getAchievementProgress()
         : state.getLockedAchievementProgress();
-    achievementsSummary.textContent = hasOnlinePlayer
+    achievementsSummary.textContent = hasAchievementPlayer
         ? `${progress.unlockedCount} / ${progress.totalCount} unlocked - ${progress.percent}% complete`
-        : `Sign in to track achievements - 0 / ${progress.totalCount} unlocked`;
+        : `Local login or sign in online to track achievements - 0 / ${progress.totalCount} unlocked`;
     achievementsList.replaceChildren();
 
     progress.items.forEach(achievement => {
@@ -607,6 +609,23 @@ function setOnlinePlayReady(ready, label = '') {
     }
 }
 
+function setLocalPlayReady(ready, label = '') {
+    localPlayReady = !!ready;
+    if (localPlayButton) {
+        localPlayButton.style.display = localPlayReady ? 'block' : 'none';
+        localPlayButton.disabled = !localPlayReady;
+        if (label && localPlayReady) {
+            localPlayButton.title = `Play local as ${label}`;
+        } else {
+            localPlayButton.removeAttribute('title');
+        }
+    }
+    if (localLoginButton) {
+        localLoginButton.textContent = localPlayReady ? 'Local Logged In' : 'Local Login';
+        localLoginButton.disabled = localPlayReady;
+    }
+}
+
 async function loadSavedGameAlias(user) {
     if (!user?.uid) return '';
     try {
@@ -771,6 +790,7 @@ async function prepareOnlinePlayerForUser(user, successMessage = '') {
     hideGoogleAliasPrompt();
     state.setPlayerInfo(user.uid, gameAlias);
     state.setActiveLeaderboardSource('global');
+    setLocalPlayReady(false);
     if (user.email) {
         localStorage.setItem(LAST_EMAIL_KEY, user.email);
         emailInput.value = user.email;
@@ -972,6 +992,7 @@ export function showLoginScreen() {
     rememberPasswordCheckbox.checked = !!savedEmail;
     hideGoogleAliasPrompt();
     setOnlinePlayReady(state.getActiveLeaderboardSource() === 'global' && !!state.getUserId() && state.getUserId() !== 'local-player', state.getDisplayName());
+    setLocalPlayReady(localPlayReady && state.isLocalPlayer(), state.getDisplayName());
     clearLegacySavedPassword();
     aliasInput.value = '';
     setAuthMode(false); // Ensure it starts in Login mode
@@ -1137,6 +1158,7 @@ async function handleAuthClick() {
             // Store relevant info (UID and Display Name)
             state.setPlayerInfo(userCredential.user.uid, alias);
             state.setActiveLeaderboardSource('global');
+            setLocalPlayReady(false);
             localStorage.setItem(LAST_EMAIL_KEY, email);
             sessionPasswordEmail = email;
             sessionPasswordCache = password;
@@ -1150,6 +1172,7 @@ async function handleAuthClick() {
             const gameAlias = await resolveGameAliasForUser(userCredential.user);
             state.setPlayerInfo(userCredential.user.uid, gameAlias);
             state.setActiveLeaderboardSource('global');
+            setLocalPlayReady(false);
             if (rememberPasswordCheckbox.checked) {
                 localStorage.setItem(LAST_EMAIL_KEY, email);
                 sessionPasswordEmail = email;
@@ -1479,6 +1502,7 @@ async function handleQuitClick() {
         state.setActiveLeaderboardSource('local');
         state.clearLeaderboardCache();
         setOnlinePlayReady(false);
+        setLocalPlayReady(false);
         infoText.textContent = 'Signed out. Choose a sign-in method or play local.';
     } catch (error) {
         console.error("Sign out error:", error);
@@ -1490,20 +1514,34 @@ async function handleQuitClick() {
     }
 }
 
-function handleLocalPlayClick() {
-    console.log("Starting local play without Firebase auth.");
+function handleLocalLoginClick() {
+    console.log("Local login selected.");
     const localAlias = localAliasInput ? localAliasInput.value.trim() : '';
     if (!localAlias) {
         infoText.textContent = 'Enter an alias for the leaderboard first.';
         localAliasInput?.focus();
-        return;
+        return false;
     }
 
     localStorage.setItem(LOCAL_ALIAS_KEY, localAlias);
+    state.setActiveLeaderboardSource('local');
+    ensureLocalPlayIdentity(localAlias);
+    setLocalPlayReady(true, localAlias);
+    state.clearLeaderboardCache();
+    infoText.textContent = `Local login ready as ${localAlias}. Press Play Local when ready.`;
+    return true;
+}
+
+function handleLocalPlayClick() {
+    console.log("Starting local play without Firebase auth.");
+    if (!localPlayReady && !handleLocalLoginClick()) {
+        return;
+    }
+
     requestMobileFullscreen();
     audio.initializeAudio();
     state.setActiveLeaderboardSource('local');
-    ensureLocalPlayIdentity(localAlias);
+    ensureLocalPlayIdentity(localAliasInput?.value.trim() || state.getDisplayName() || 'Local Player');
     infoText.textContent = 'Starting local game...';
     hideLoginScreen();
     startGameLogic();
@@ -1631,6 +1669,7 @@ async function initializeAuthStateListener() {
                     state.setActiveLeaderboardSource('local');
                     state.clearLeaderboardCache();
                     setOnlinePlayReady(false);
+                    setLocalPlayReady(false);
                     if (quitButton) quitButton.textContent = 'Quit';
                     if (state.getCurrentGameState() === state.GameState.MainMenu) {
                         infoText.textContent = 'Signed out from the previous session. Sign in or play local.';
@@ -1648,6 +1687,7 @@ async function initializeAuthStateListener() {
                     if (savedAlias) {
                         state.setPlayerInfo(user.uid, savedAlias);
                         state.setActiveLeaderboardSource('global');
+                        setLocalPlayReady(false);
                         setOnlinePlayReady(true, savedAlias);
                         if (!pendingProvider) {
                             infoText.textContent = `Signed in as ${savedAlias}. Start an online run when ready.`;
@@ -1655,6 +1695,7 @@ async function initializeAuthStateListener() {
                     } else if (requiresManualAlias(user)) {
                         state.setPlayerInfo(user.uid, 'Online Player');
                         state.setActiveLeaderboardSource('global');
+                        setLocalPlayReady(false);
                         setOnlinePlayReady(false);
                         showGoogleAliasPrompt(user);
                     }
@@ -1769,6 +1810,7 @@ export function initializeUI() {
     if (!googleAliasSaveButton) console.error('googleAliasSaveButton not found during init!');
     if (!onlinePlayButton) console.error('onlinePlayButton not found during init!');
     if (!quitButton) console.error('quitButton not found during init!');
+    if (!localLoginButton) console.error('localLoginButton not found during init!');
     if (!localPlayButton) console.error('localPlayButton not found during init!');
     if (!leaderboardButton) console.error('leaderboardButton not found!');
     if (!achievementsButton) console.error('achievementsButton not found!');
@@ -1806,7 +1848,7 @@ export function initializeUI() {
         authForm.addEventListener('submit', (e) => {
             e.preventDefault();
             if (document.activeElement === localAliasInput) {
-                handleLocalPlayClick();
+                handleLocalLoginClick();
             } else if (!authButton.disabled) {
                 handleAuthClick();
             }
@@ -1826,6 +1868,9 @@ export function initializeUI() {
         onlinePlayButton.addEventListener('click', startOnlineRun);
     }
     quitButton.addEventListener('click', handleQuitClick);
+    if (localLoginButton) {
+        localLoginButton.addEventListener('click', handleLocalLoginClick);
+    }
     if (localPlayButton) {
         localPlayButton.addEventListener('click', handleLocalPlayClick);
     }
@@ -1886,7 +1931,7 @@ export function initializeUI() {
             if (e.key === 'Enter' && !authButton.disabled) {
                 e.preventDefault();
                 if (input === localAliasInput) {
-                    handleLocalPlayClick();
+                    handleLocalLoginClick();
                 } else if (input === googleAliasInput) {
                     handleGoogleAliasSaveClick();
                 } else {
@@ -1894,6 +1939,12 @@ export function initializeUI() {
                 }
             }
         });
+    });
+
+    localAliasInput?.addEventListener('input', () => {
+        if (!localPlayReady) return;
+        setLocalPlayReady(false);
+        infoText.textContent = 'Local alias changed. Press Local Login again before playing.';
     });
 
     retryButton.addEventListener('click', handleRetryClick);
