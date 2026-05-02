@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-61';
-import * as audio from './audio.js?v=mobile-portrait-61'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-62';
+import * as audio from './audio.js?v=mobile-portrait-62'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-61';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-62';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-61';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-62';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -54,8 +54,9 @@ const optionsMenu = document.getElementById('optionsMenu');     // NEW
 const optionsBackButton = document.getElementById('optionsBackButton'); // NEW
 const aboutButton = document.getElementById('aboutButton');
 const aboutPanel = document.getElementById('aboutPanel');
-const aboutCloseButton = document.getElementById('aboutCloseButton');
-const appVersionLabel = document.getElementById('appVersionLabel');
+const versionDisplay = document.getElementById('versionDisplay');
+const optionsCategoryButtons = Array.from(document.querySelectorAll('.options-category-button'));
+const optionsSections = Array.from(document.querySelectorAll('.options-section'));
 const musicVolumeSlider = document.getElementById('musicVolumeSlider'); // NEW
 const musicVolumeValue = document.getElementById('musicVolumeValue');   // NEW
 const sfxVolumeSlider = document.getElementById('sfxVolumeSlider');     // NEW
@@ -115,6 +116,7 @@ let replayReturnTarget = 'gameover';
 let menuLeaderboardSource = 'local';
 let gameOverLeaderboardSource = 'local';
 let gameOverLeaderboardRequestId = 0;
+let activeOptionsSection = 'audio';
 let controllerToastTimer = null;
 let sessionPasswordCache = '';
 let sessionPasswordEmail = '';
@@ -647,11 +649,11 @@ const FOCUSED_OPTIONS_ITEM_CLASS = 'focused'; // Class for option items (sliders
 const FOCUSED_BUTTON_CLASS = 'focused-button'; // Existing class for buttons
 
 export function setupOptionsFocus() {
-    const sliders = Array.from(optionsMenu.querySelectorAll('.options-item'));
-    const buttons = [aboutButton, ...(aboutPanel?.style.display === 'none' ? [] : [aboutCloseButton]), optionsBackButton]
-        .filter(Boolean);
-    optionsFocusableItems = [...sliders, ...buttons];
-    currentOptionsFocusIndex = 0; // Default focus to the first slider
+    const activeSection = optionsMenu?.querySelector(`.options-section.is-active`);
+    const controls = activeSection ? Array.from(activeSection.querySelectorAll('.options-item')) : [];
+    const buttons = [...optionsCategoryButtons, optionsBackButton].filter(Boolean);
+    optionsFocusableItems = [...buttons, ...controls];
+    currentOptionsFocusIndex = Math.min(currentOptionsFocusIndex, Math.max(0, optionsFocusableItems.length - 1));
     updateOptionsMenuFocus();
 }
 
@@ -665,7 +667,7 @@ function updateOptionsMenuFocus() {
             // Add the appropriate focus class based on the element type
             if (item.classList.contains('options-item')) {
                 item.classList.add(FOCUSED_OPTIONS_ITEM_CLASS);
-            } else { // It's the button
+            } else { // It's a button
                 item.classList.add(FOCUSED_BUTTON_CLASS);
             }
         }
@@ -766,6 +768,7 @@ export function activateFocusedGameOverButton() {
 // --- UI Control ---
 export function showLoginScreen() {
     loginScreen.style.display = 'flex';
+    if (versionDisplay) versionDisplay.textContent = `Alpha ${APP_VERSION}`;
     loginScreen.scrollTop = 0;
     requestAnimationFrame(() => {
         loginScreen.scrollTop = 0;
@@ -1295,11 +1298,26 @@ function handleQuitToMenuClick() {
 }
 
 // --- Show/Hide Menus ---
+function showOptionsSection(sectionName = 'audio') {
+    activeOptionsSection = sectionName;
+    optionsSections.forEach(section => {
+        const isActive = section.dataset.optionsPanel === sectionName;
+        section.classList.toggle('is-active', isActive);
+    });
+    optionsCategoryButtons.forEach(button => {
+        const isActive = button.dataset.optionsSection === sectionName;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-expanded', isActive ? 'true' : 'false');
+    });
+    currentOptionsFocusIndex = Math.max(0, optionsCategoryButtons.findIndex(button =>
+        button.dataset?.optionsSection === sectionName
+    ));
+    setupOptionsFocus();
+}
+
 function showOptionsMenu(fromPause = false) {
     returnToPauseMenu = fromPause; // Remember where we came from
     if (optionsMenu) optionsMenu.style.display = 'block';
-    if (aboutPanel) aboutPanel.style.display = 'none';
-    if (appVersionLabel) appVersionLabel.textContent = APP_VERSION;
     if (fromPause) {
         if (pauseMenu) pauseMenu.style.display = 'none'; // Hide pause menu
     } else {
@@ -1321,27 +1339,8 @@ function showOptionsMenu(fromPause = false) {
         bestGhostToggle.checked = state.isGhostEnabled();
         if (bestGhostValue) bestGhostValue.textContent = bestGhostToggle.checked ? 'On' : 'Off';
     }
-    setupOptionsFocus(); // Initialize focus when shown
-}
-
-function showAboutPanel() {
-    if (!aboutPanel) return;
-    aboutPanel.style.display = 'block';
-    if (appVersionLabel) appVersionLabel.textContent = APP_VERSION;
-    setupOptionsFocus();
-    requestAnimationFrame(() => {
-        aboutPanel.scrollIntoView({
-            behavior: 'smooth',
-            block: 'nearest',
-            inline: 'nearest'
-        });
-    });
-}
-
-function hideAboutPanel() {
-    if (!aboutPanel) return;
-    aboutPanel.style.display = 'none';
-    setupOptionsFocus();
+    currentOptionsFocusIndex = 0;
+    showOptionsSection(activeOptionsSection || 'audio');
 }
 
 async function requestMobileFullscreen() {
@@ -1378,6 +1377,7 @@ function hideOptionsMenu() {
         item.classList.remove(FOCUSED_BUTTON_CLASS);
     });
     optionsFocusableItems = []; // Clear array
+    currentOptionsFocusIndex = 0;
 }
 
 async function initializeAuthStateListener() {
@@ -1502,8 +1502,8 @@ export function initializeUI() {
     if (!optionsBackButton) console.error('optionsBackButton not found!');
     if (!aboutButton) console.error('aboutButton not found!');
     if (!aboutPanel) console.error('aboutPanel not found!');
-    if (!aboutCloseButton) console.error('aboutCloseButton not found!');
-    if (!appVersionLabel) console.error('appVersionLabel not found!');
+    if (!versionDisplay) console.error('versionDisplay not found!');
+    if (optionsCategoryButtons.length === 0) console.error('options category buttons not found!');
     if (!musicVolumeSlider) console.error('musicVolumeSlider not found!');
     if (!musicVolumeValue) console.error('musicVolumeValue not found!');
     if (!sfxVolumeSlider) console.error('sfxVolumeSlider not found!');
@@ -1614,12 +1614,11 @@ export function initializeUI() {
     if (optionsBackButton) {
         optionsBackButton.addEventListener('click', hideOptionsMenu);
     }
-    if (aboutButton) {
-        aboutButton.addEventListener('click', showAboutPanel);
-    }
-    if (aboutCloseButton) {
-        aboutCloseButton.addEventListener('click', hideAboutPanel);
-    }
+    optionsCategoryButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            showOptionsSection(button.dataset.optionsSection || 'audio');
+        });
+    });
 
     if (loginStarCanvas) {
         window.addEventListener('resize', resizeLoginStars);
@@ -1721,6 +1720,7 @@ export function initializeUI() {
     }
 
     showLoginScreen();
+    if (versionDisplay) versionDisplay.textContent = `Alpha ${APP_VERSION}`;
     authButton.disabled = false;
     setProviderSignInButtonsDisabled(false);
     quitButton.disabled = false;

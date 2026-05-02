@@ -522,6 +522,18 @@ body.game-screen-active {
     width: 100%;
 }
 
+.main-menu-version {
+    position: absolute;
+    right: 16px;
+    bottom: 10px;
+    color: rgba(199, 220, 208, 0.64);
+    font-family: 'Petitinho', sans-serif;
+    font-size: 0.78rem;
+    line-height: 1;
+    text-align: right;
+    pointer-events: none;
+}
+
 #loginScreen button:hover:not(:disabled) {
     background-color: #ffffff; /* White hover */
     transform: scale(1.02); /* Slight grow */
@@ -958,6 +970,37 @@ body:has(#loginScreen[style*="display: flex"]) {
     text-shadow: 2px 2px 3px rgba(0,0,0,0.5); /* Add slight shadow */
 }
 
+.options-category-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.options-category-button {
+    width: 100%;
+    min-width: 0;
+    font-size: 1.02rem;
+    line-height: 1.1;
+    white-space: nowrap;
+}
+
+.options-category-button.active {
+    background-color: #f9c22b;
+    color: #2e222f;
+    box-shadow: 0 0 14px rgba(249, 194, 43, 0.24);
+}
+
+.options-section {
+    display: none;
+    border-top: 1px solid rgba(199, 220, 208, 0.14);
+    padding-top: 4px;
+}
+
+.options-section.is-active {
+    display: block;
+}
+
 .options-item {
     display: grid;
     grid-template-columns: minmax(160px, 0.9fr) minmax(180px, 1fr) 64px;
@@ -1027,14 +1070,13 @@ body:has(#loginScreen[style*="display: flex"]) {
     color: #e0e0e0; /* Match body text */
 }
 
-#aboutButton,
 #optionsBackButton {
     margin-top: 14px;
     width: min(100%, 260px);
 }
 
 .about-panel {
-    margin: 18px auto 0;
+    margin: 0 auto;
     padding: 18px;
     border: 1px solid rgba(199, 220, 208, 0.35);
     border-radius: 8px;
@@ -1062,9 +1104,17 @@ body:has(#loginScreen[style*="display: flex"]) {
 
 .about-meta-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 10px;
     margin: 0 0 14px;
+}
+
+.options-help-text {
+    margin: -4px 10px 10px;
+    color: rgba(199, 220, 208, 0.72);
+    font-size: 0.92rem;
+    line-height: 1.25;
+    text-align: center;
 }
 
 .about-meta-card,
@@ -1577,6 +1627,28 @@ body.mobile-viewport #optionsMenu {
 body.mobile-viewport #optionsMenu h2 {
     margin-bottom: 16px;
     font-size: clamp(1.8rem, 10vw, 2.4rem);
+}
+
+body.mobile-viewport .main-menu-version {
+    right: 18px;
+    bottom: 8px;
+    font-size: 0.68rem;
+}
+
+body.mobile-viewport .options-category-grid {
+    grid-template-columns: 1fr;
+    gap: 9px;
+    margin-bottom: 12px;
+}
+
+body.mobile-viewport .options-category-button {
+    padding: 11px 12px;
+    font-size: clamp(0.95rem, 4.8vw, 1.16rem);
+    touch-action: manipulation;
+}
+
+body.mobile-viewport .options-section {
+    padding-top: 2px;
 }
 
 body.mobile-viewport .options-section-title {

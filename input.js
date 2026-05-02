@@ -1,10 +1,10 @@
 // This file will handle keyboard and gamepad input 
-import * as state from './state.js?v=mobile-portrait-61';
-import * as audio from './audio.js?v=mobile-portrait-61';
-import * as ui from './ui.js?v=mobile-portrait-61';
-import { player } from './entities.js?v=mobile-portrait-61';
-import { AXIS_DEADZONE, PLAYER_JUMP_POWER, PLAYER_DASH_POWER, PLAYER_DASH_DURATION, PLAYER_DASH_COOLDOWN, PLAYER_GRAVITY } from './constants.js?v=mobile-portrait-61';
-import { getPlatforms } from './state.js?v=mobile-portrait-61'; // Import getPlatforms
+import * as state from './state.js?v=mobile-portrait-62';
+import * as audio from './audio.js?v=mobile-portrait-62';
+import * as ui from './ui.js?v=mobile-portrait-62';
+import { player } from './entities.js?v=mobile-portrait-62';
+import { AXIS_DEADZONE, PLAYER_JUMP_POWER, PLAYER_DASH_POWER, PLAYER_DASH_DURATION, PLAYER_DASH_COOLDOWN, PLAYER_GRAVITY } from './constants.js?v=mobile-portrait-62';
+import { getPlatforms } from './state.js?v=mobile-portrait-62'; // Import getPlatforms
 
 // --- Input State (shared within this module) ---
 export const keys = {
@@ -412,13 +412,15 @@ export function handleGamepadInput() {
                     let currentValue = parseInt(slider.value);
                     let changed = false;
 
+                    const sliderMin = parseFloat(slider.min || '0');
+                    const sliderMax = parseFloat(slider.max || '100');
                     if (dpadRight && !optionsNavState.right) {
-                        slider.value = Math.min(100, currentValue + step);
+                        slider.value = Math.min(sliderMax, currentValue + step);
                         changed = true;
                         optionsNavState.right = true; 
                     }
                     if (dpadLeft && !optionsNavState.left) {
-                        slider.value = Math.max(0, currentValue - step);
+                        slider.value = Math.max(sliderMin, currentValue - step);
                         changed = true;
                         optionsNavState.left = true;
                     }
@@ -430,7 +432,7 @@ export function handleGamepadInput() {
                     checkbox.checked = !checkbox.checked;
                     checkbox.dispatchEvent(new Event('change', { bubbles:true }));
                 }
-            } else if ((focusedItem.id === 'optionsBackButton' || focusedItem.id === 'aboutButton' || focusedItem.id === 'aboutCloseButton') && activate) {
+            } else if ((focusedItem.id === 'optionsBackButton' || focusedItem.classList.contains('options-category-button')) && activate) {
                 console.log('  Activate Button (Options)!');
                 focusedItem.click(); 
             }
