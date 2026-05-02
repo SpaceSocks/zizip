@@ -478,7 +478,7 @@ body.game-screen-active {
 }
 
 .apple-signin-button {
-    background: #111318 !important;
+    background: #000000 !important;
     color: #ffffff !important;
 }
 
@@ -523,16 +523,16 @@ body.game-screen-active {
 .apple-mark {
     display: inline-grid;
     place-items: center;
-    width: 24px;
-    height: 24px;
+    width: 32px;
+    height: 32px;
     overflow: hidden;
     background: transparent;
 }
 
 .apple-mark img {
     display: block;
-    width: 24px;
-    height: 24px;
+    width: 32px;
+    height: 32px;
     object-fit: contain;
 }
 
@@ -567,7 +567,7 @@ body.game-screen-active {
 }
 
 #loginScreen .apple-signin-button:hover:not(:disabled) {
-    background: #1b1f2a !important;
+    background: #000000 !important;
     color: #ffffff !important;
 }
 
