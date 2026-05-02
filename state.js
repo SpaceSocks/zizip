@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-82';
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-82';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-83';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-83';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({
@@ -251,6 +251,13 @@ function queueAchievementPopup(achievement) {
         alpha: 0
     });
     if (achievementPopups.length > 3) achievementPopups = achievementPopups.slice(-3);
+
+    window.dispatchEvent(new CustomEvent('zipzip:achievement-unlocked', {
+        detail: {
+            id: achievement.id,
+            title: achievement.title
+        }
+    }));
 }
 
 function evaluateAchievements() {

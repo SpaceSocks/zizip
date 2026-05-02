@@ -1,4 +1,4 @@
-import * as state from './state.js?v=mobile-portrait-82';
+import * as state from './state.js?v=mobile-portrait-83';
 // import { player } from './entities.js'; // No longer needed here
 
 // This file will handle audio initialization and playback 
@@ -9,6 +9,7 @@ let sfxLandPlayer;
 let sfxMiddleLandPlayer;
 let sfxGameOverPlayer;
 let sfxPlayerDeathPlayer;
+let sfxAchievementPlayer;
 let audioContext;
 let sfxGainNode;
 let musicSourceNode;
@@ -16,6 +17,7 @@ let musicGainNode;
 let sfxBufferLoadPromise = null;
 let musicPreloadPromise = null;
 let musicPreloadTrack = '';
+let achievementSoundListenerBound = false;
 const sfxBuffers = new Map();
 
 // Store all SFX players for easier volume control
@@ -43,11 +45,13 @@ const sfxLandPath = 'Audio/SFX/Landing1.wav';
 const sfxMiddleLandPath = 'Audio/SFX/middleBlock.wav';
 const sfxGameOverPath = 'Audio/SFX/gameover.wav';
 const sfxPlayerDeathPath = 'Audio/SFX/PlayerDeath.wav';
+const sfxAchievementPath = 'Audio/SFX/AchievementUnlock.wav';
 const SFX_DEFINITIONS = {
     land: sfxLandPath,
     middleLand: sfxMiddleLandPath,
     gameOver: sfxGameOverPath,
-    playerDeath: sfxPlayerDeathPath
+    playerDeath: sfxPlayerDeathPath,
+    achievement: sfxAchievementPath
 };
 
 function getAudioContext() {
@@ -228,9 +232,10 @@ export function setupAudioPlayers() {
     sfxMiddleLandPlayer = new Audio(sfxMiddleLandPath);
     sfxGameOverPlayer = new Audio(sfxGameOverPath);
     sfxPlayerDeathPlayer = new Audio(sfxPlayerDeathPath);
+    sfxAchievementPlayer = new Audio(sfxAchievementPath);
 
     // Assign initial volume and add to array
-    sfxPlayers = [sfxLandPlayer, sfxMiddleLandPlayer, sfxGameOverPlayer, sfxPlayerDeathPlayer];
+    sfxPlayers = [sfxLandPlayer, sfxMiddleLandPlayer, sfxGameOverPlayer, sfxPlayerDeathPlayer, sfxAchievementPlayer];
     sfxPlayers.forEach(player => {
         player.preload = 'auto';
         player.volume = sfxVolume;
@@ -255,7 +260,17 @@ export function setupAudioPlayers() {
     sfxMiddleLandPlayer.addEventListener('error', (e) => console.error("SFX Middle Land Error:", e));
     sfxGameOverPlayer.addEventListener('error', (e) => console.error("SFX Game Over Error:", e));
     sfxPlayerDeathPlayer.addEventListener('error', (e) => console.error("SFX Player Death Error:", e));
+    sfxAchievementPlayer.addEventListener('error', (e) => console.error("SFX Achievement Error:", e));
+    bindAchievementSoundListener();
     console.log("Audio players setup with listeners.")
+}
+
+function bindAchievementSoundListener() {
+    if (achievementSoundListenerBound) return;
+    achievementSoundListenerBound = true;
+    window.addEventListener('zipzip:achievement-unlocked', () => {
+        playAchievementSound();
+    });
 }
 
 // --- Shuffle and Play Next Track ---
@@ -487,5 +502,14 @@ export function playPlayerDeathSound() {
     }
     if (!playBufferedSfx('playerDeath')) {
         playFallbackAudio(sfxPlayerDeathPlayer, 'Player Death');
+    }
+}
+
+export function playAchievementSound() {
+    if (!state.getAudioInitialized() || !sfxAchievementPlayer) {
+        return;
+    }
+    if (!playBufferedSfx('achievement')) {
+        playFallbackAudio(sfxAchievementPlayer, 'Achievement');
     }
 }
