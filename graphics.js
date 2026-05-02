@@ -1,9 +1,9 @@
 // This file will handle graphics, drawing, and canvas resizing
 
-import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-53';
-import * as state from './state.js?v=mobile-portrait-53';
-import { player } from './entities.js?v=mobile-portrait-53'; // Need player for drawing
-import * as ui from './ui.js?v=mobile-portrait-53'; // Import ui module
+import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-54';
+import * as state from './state.js?v=mobile-portrait-54';
+import { player } from './entities.js?v=mobile-portrait-54'; // Need player for drawing
+import * as ui from './ui.js?v=mobile-portrait-54'; // Import ui module
 
 // --- Canvas Setup ---
 export const canvas = document.getElementById('gameCanvas');
@@ -922,7 +922,7 @@ function drawReplayScorePopups(viewer, view) {
         const x = view.x + Number(event.xRatio) * sourceWidth * scaleX;
         const y = view.y + Number(event.yRatio) * sourceHeight * scaleY - SCORE_POPUP_SPEED * (age / 1000) * 60 * scaleY;
         ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-        ctx.fillStyle = event.middle ? R64.YELLOW : R64.WHITE;
+        ctx.fillStyle = R64.WHITE;
         ctx.fillText(String(event.scoreText).slice(0, 16), x, y);
     });
     ctx.restore();
