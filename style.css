@@ -433,7 +433,7 @@ body.game-screen-active {
 #loginScreen .primary-action {
     width: 100%;
     padding: 15px 30px;
-    background: linear-gradient(90deg, #f9c22b, #f57d4a);
+    background: #f9c22b;
     color: #2e222f;
     font-size: 1.45em;
     letter-spacing: 1px;
@@ -441,7 +441,7 @@ body.game-screen-active {
 }
 
 #loginScreen .primary-action:hover:not(:disabled) {
-    background: linear-gradient(90deg, #ffe28a, #fb6b1d);
+    background: #ffe28a;
 }
 
 .google-signin-button {
