@@ -1,9 +1,9 @@
 // This file will handle graphics, drawing, and canvas resizing
 
-import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-84';
-import * as state from './state.js?v=mobile-portrait-84';
-import { player } from './entities.js?v=mobile-portrait-84'; // Need player for drawing
-import * as ui from './ui.js?v=mobile-portrait-84'; // Import ui module
+import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-85';
+import * as state from './state.js?v=mobile-portrait-85';
+import { player } from './entities.js?v=mobile-portrait-85'; // Need player for drawing
+import * as ui from './ui.js?v=mobile-portrait-85'; // Import ui module
 
 // --- Canvas Setup ---
 export const canvas = document.getElementById('gameCanvas');
@@ -266,7 +266,7 @@ function drawHUD(player) {
         ctx.font = '24px Petitinho'; // Reset font size
     }
     const achievementToastY = trackName !== "None" ? yPos + 28 : yPos + 4;
-    drawAchievementToasts(canvas.width / 2, achievementToastY, canvas.width - 80, false);
+    const achievementToastHeight = drawAchievementToasts(canvas.width / 2, achievementToastY, canvas.width - 80, false);
 
     // --- Real-time Height Meter (Center Right) ---
     // Calculate current height relative to starting position
@@ -300,7 +300,8 @@ function drawHUD(player) {
         ctx.font = '22px Petitinho';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillText(`PERFECT STREAK ${perfectStreak}  x${comboMultiplier}`, canvas.width / 2, achievementToastY + 36);
+        const streakY = achievementToastY + (achievementToastHeight > 0 ? achievementToastHeight + 8 : 8);
+        ctx.fillText(`PERFECT STREAK ${perfectStreak}  x${comboMultiplier}`, canvas.width / 2, streakY);
     }
 
     // REMOVED STATIC Indicator Lines
@@ -369,7 +370,8 @@ function drawCompactHUD(player) {
         ctx.font = '12px Petitinho';
         ctx.fillText(`Playing: ${trackName}`, halfWidth, top + 60, canvas.width - edge * 2);
     }
-    drawAchievementToasts(halfWidth, top + 82, canvas.width - edge * 2, true);
+    const achievementToastY = top + 82;
+    const achievementToastHeight = drawAchievementToasts(halfWidth, achievementToastY, canvas.width - edge * 2, true);
 
     ctx.fillStyle = R64.WHITE;
     ctx.font = `${Math.min(17, Math.max(14, Math.round(canvas.width * 0.04)))}px Petitinho`;
@@ -384,18 +386,19 @@ function drawCompactHUD(player) {
         ctx.font = '16px Petitinho';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillText(`PERFECT ${perfectStreak} x${comboMultiplier}`, halfWidth, top + 122, canvas.width - edge * 2);
+        const streakY = achievementToastHeight > 0 ? achievementToastY + achievementToastHeight + 8 : top + 122;
+        ctx.fillText(`PERFECT ${perfectStreak} x${comboMultiplier}`, halfWidth, streakY, canvas.width - edge * 2);
     }
 }
 
 function drawAchievementToasts(centerX, y, maxWidth, compact = false) {
     const now = Date.now();
     const popups = state.getAchievementPopups?.() || [];
-    if (!popups.length) return;
+    if (!popups.length) return 0;
 
     state.filterAchievementPopups?.(popup => now - popup.createdAt <= ACHIEVEMENT_TOAST_LIFETIME);
     const visiblePopups = state.getAchievementPopups?.() || [];
-    if (!visiblePopups.length) return;
+    if (!visiblePopups.length) return 0;
 
     const popup = visiblePopups[0];
     const age = now - popup.createdAt;
@@ -426,6 +429,7 @@ function drawAchievementToasts(centerX, y, maxWidth, compact = false) {
     ctx.font = `${compact ? 15 : 19}px Petitinho`;
     ctx.fillText(String(popup.title || '').toUpperCase(), centerX, y + (compact ? 19 : 24), width - 18);
     ctx.restore();
+    return height;
 }
 
 function getDisplayedRunHeight(player) {
