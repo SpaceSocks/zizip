@@ -1,18 +1,17 @@
-import * as state from './state.js?v=mobile-portrait-72';
-import * as graphics from './graphics.js?v=mobile-portrait-72';
-import * as input from './input.js?v=mobile-portrait-72';
-import * as audio from './audio.js?v=mobile-portrait-72';
-import { player, createPlatform } from './entities.js?v=mobile-portrait-72';
-import * as ui from './ui.js?v=mobile-portrait-72'; // Import UI
+import * as state from './state.js?v=mobile-portrait-73';
+import * as graphics from './graphics.js?v=mobile-portrait-73';
+import * as input from './input.js?v=mobile-portrait-73';
+import * as audio from './audio.js?v=mobile-portrait-73';
+import { player, createPlatform } from './entities.js?v=mobile-portrait-73';
+import * as ui from './ui.js?v=mobile-portrait-73'; // Import UI
 import {
     MIN_VERT_GAP, MAX_VERT_GAP, PLATFORM_START_WIDTH, PLATFORM_EARLY_MIN_WIDTH, PLATFORM_MIN_WIDTH,
     PLATFORM_WIDTH_DIFFICULTY_HEIGHT, PLAYER_GRAVITY, PLAYER_JUMP_POWER, PLAYER_SPEED,
-    PLAYER_DASH_POWER, PLAYER_DASH_DURATION,
     SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED,
     PLATFORM_PROBABILITY, PLATFORM_MIDDLE_THRESHOLD,
     PLATFORM_FLASH_DURATION, PLATFORM_FLASH_INTERVAL_MAX, PLATFORM_FLASH_INTERVAL_MIN,
     PLATFORM_FLASH_START_DELAY, PLAYER_AIR_CONTROL_FACTOR
-} from './constants.js?v=mobile-portrait-72';
+} from './constants.js?v=mobile-portrait-73';
 
 // --- Game Variables ---
 let animationFrameId = null;
@@ -282,13 +281,11 @@ function getReachableEdgeGap(yOffset, difficulty) {
     const jumpAirFrames = discriminant > 0
         ? (jumpPower + Math.sqrt(discriminant)) / gravity
         : jumpPower / gravity;
-    const dashFrames = (PLAYER_DASH_DURATION / 1000) * 60;
     const runReach = speed * jumpAirFrames;
-    const dashReach = PLAYER_DASH_POWER * dashFrames;
 
     // Keep the spawn window a little inside the theoretical max so every new block feels fair.
     const minReach = isMobilePlayfield() ? 125 : 175;
-    return Math.max(minReach, (runReach + dashReach * 0.8) * (0.88 - difficulty * 0.08));
+    return Math.max(minReach, runReach * (0.9 - difficulty * 0.08));
 }
 
 function getCurrentRunHeight() {
@@ -312,7 +309,6 @@ function beginDeathSequence() {
     };
 
     player.isGrounded = false;
-    player.isDashing = false;
     player.groundedOnPlatform = null;
     player.tumbleActive = true;
     player.velocityX *= 0.35;
@@ -463,10 +459,7 @@ function update(dt) {
         player.y += deltaYToApply;
     }
 
-    // Apply gravity (only if not dashing)
-    if (!player.isDashing) {
-        player.velocityY += player.gravity * dt * 60;
-    }
+    player.velocityY += player.gravity * dt * 60;
     let previousY = player.y; // Store Y before applying velocity
     player.y += player.velocityY * dt * 60; // Apply player's vertical velocity
 
@@ -591,21 +584,16 @@ function update(dt) {
         // console.log("Using air control factor"); // DEBUG
     }
 
-    if (!player.isDashing) {
-        // Input velocity
-        if (input.keys.left) { targetVelocityX = -player.speed; }
-        else if (input.keys.right) { targetVelocityX = player.speed; }
-        if (targetVelocityX !== 0) {
-            player.facing = Math.sign(targetVelocityX);
-        }
+    if (input.keys.left) { targetVelocityX = -player.speed; }
+    else if (input.keys.right) { targetVelocityX = player.speed; }
+    if (targetVelocityX !== 0) {
+        player.facing = Math.sign(targetVelocityX);
+    }
 
-        // Apply friction/acceleration using the correct currentFriction
-        // console.log(`Applying friction: ${player.currentFriction}`); // DEBUG
-        if (player.velocityX < targetVelocityX) {
-            player.velocityX = Math.min(player.velocityX + player.currentFriction * player.speed, targetVelocityX);
-        } else if (player.velocityX > targetVelocityX) {
-            player.velocityX = Math.max(player.velocityX - player.currentFriction * player.speed, targetVelocityX);
-        }
+    if (player.velocityX < targetVelocityX) {
+        player.velocityX = Math.min(player.velocityX + player.currentFriction * player.speed, targetVelocityX);
+    } else if (player.velocityX > targetVelocityX) {
+        player.velocityX = Math.max(player.velocityX - player.currentFriction * player.speed, targetVelocityX);
     }
 
     // Apply player's own horizontal velocity
@@ -652,11 +640,11 @@ function update(dt) {
     // Boundary checks
     if (player.x < 0) {
         player.x = 0;
-        if (!player.isDashing) player.velocityX = 0;
+        player.velocityX = 0;
     }
     if (player.x + player.width > graphics.canvas.width) {
         player.x = graphics.canvas.width - player.width;
-        if (!player.isDashing) player.velocityX = 0;
+        player.velocityX = 0;
     }
 
     // Camera/Scrolling & Height Update
@@ -880,8 +868,6 @@ function resetPlayerState() {
     player.jumpsLeft = 2;
     player.isGrounded = true;
     player.visible = true;
-    player.isDashing = false;
-    player.lastDashTime = 0;
     player.facing = 1;
     resetPlayerTumble();
     player.jumpPower = getPlayerJumpPower();
@@ -963,7 +949,6 @@ function respawnPlayer() {
         player.isGrounded = true;
         player.visible = true;
         player.jumpsLeft = 2;
-    player.isDashing = false;
     player.facing = 1;
     resetPlayerTumble();
     player.jumpPower = getPlayerJumpPower();

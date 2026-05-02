@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-72';
-import * as audio from './audio.js?v=mobile-portrait-72'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-73';
+import * as audio from './audio.js?v=mobile-portrait-73'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-72';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-73';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-72';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-73';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -21,6 +21,7 @@ const appleSignInButton = document.getElementById('appleSignInButton');
 const googleAliasPanel = document.getElementById('googleAliasPanel');
 const googleAliasInput = document.getElementById('googleAliasInput');
 const googleAliasSaveButton = document.getElementById('googleAliasSaveButton');
+const onlinePlayButton = document.getElementById('onlinePlayButton');
 const quitButton = document.getElementById('quitButton');
 const localPlayButton = document.getElementById('localPlayButton');
 const infoText = document.getElementById('infoText');
@@ -38,6 +39,11 @@ const pauseOptionsButton = document.getElementById('pauseOptionsButton'); // NEW
 const optionsButton = document.getElementById('optionsButton');
 const leaderboardButton = document.getElementById('leaderboardButton');
 const leaderboardPanel = document.getElementById('leaderboardPanel');
+const achievementsButton = document.getElementById('achievementsButton');
+const achievementsPanel = document.getElementById('achievementsPanel');
+const achievementsSummary = document.getElementById('achievementsSummary');
+const achievementsList = document.getElementById('achievementsList');
+const achievementsBackButton = document.getElementById('achievementsBackButton');
 const leaderboardRefreshButton = document.getElementById('leaderboardRefreshButton');
 const leaderboardBackButton = document.getElementById('leaderboardBackButton');
 const localLeaderboardButton = document.getElementById('localLeaderboardButton');
@@ -301,6 +307,53 @@ function hideLeaderboardPanel() {
     if (leaderboardPanel) leaderboardPanel.style.display = 'none';
 }
 
+function hideAchievementsPanel() {
+    if (achievementsPanel) achievementsPanel.style.display = 'none';
+}
+
+function renderAchievementsPanel() {
+    if (!achievementsList || !achievementsSummary) return;
+    const progress = state.getAchievementProgress();
+    achievementsSummary.textContent = `${progress.unlockedCount} / ${progress.totalCount} unlocked - ${progress.percent}% complete`;
+    achievementsList.replaceChildren();
+
+    progress.items.forEach(achievement => {
+        const row = document.createElement('div');
+        row.className = `achievement-row${achievement.unlocked ? ' unlocked' : ''}`;
+
+        const textWrap = document.createElement('div');
+        textWrap.className = 'achievement-copy';
+        const title = document.createElement('div');
+        title.className = 'achievement-title';
+        title.textContent = achievement.title;
+        const description = document.createElement('div');
+        description.className = 'achievement-description';
+        description.textContent = achievement.description;
+        textWrap.append(title, description);
+
+        const progressWrap = document.createElement('div');
+        progressWrap.className = 'achievement-progress';
+        const progressText = document.createElement('span');
+        progressText.textContent = achievement.unlocked ? 'Unlocked' : achievement.progressText;
+        const progressBar = document.createElement('div');
+        progressBar.className = 'achievement-progress-bar';
+        const progressFill = document.createElement('div');
+        progressFill.style.width = `${achievement.percent}%`;
+        progressBar.appendChild(progressFill);
+        progressWrap.append(progressText, progressBar);
+
+        row.append(textWrap, progressWrap);
+        achievementsList.appendChild(row);
+    });
+}
+
+function showAchievementsPanel() {
+    if (!achievementsPanel) return;
+    hideLeaderboardPanel();
+    renderAchievementsPanel();
+    achievementsPanel.style.display = 'flex';
+}
+
 function makeLeaderboardCell(className, text) {
     const cell = document.createElement('div');
     cell.className = className;
@@ -368,6 +421,7 @@ function updateGameOverLeaderboardSourceButtons() {
 async function showLeaderboardPanel(force = true, source = menuLeaderboardSource || state.getActiveLeaderboardSource()) {
     if (!leaderboardPanel || !menuLeaderboardStatus || !menuLeaderboardList) return;
 
+    hideAchievementsPanel();
     menuLeaderboardSource = source === 'global' ? 'global' : 'local';
     updateLeaderboardSourceButtons();
     leaderboardPanel.style.display = 'flex';
@@ -512,6 +566,17 @@ function setProviderSignInButtonsDisabled(disabled) {
     if (appleSignInButton) appleSignInButton.disabled = disabled;
 }
 
+function setOnlinePlayReady(ready, label = '') {
+    if (!onlinePlayButton) return;
+    onlinePlayButton.disabled = !ready;
+    onlinePlayButton.textContent = ready ? 'Play Online' : 'Sign In First';
+    if (label && ready) {
+        onlinePlayButton.title = `Play online as ${label}`;
+    } else {
+        onlinePlayButton.removeAttribute('title');
+    }
+}
+
 async function loadSavedGameAlias(user) {
     if (!user?.uid) return '';
     try {
@@ -633,7 +698,7 @@ async function waitForRedirectAuthUser(auth, onAuthStateChanged, timeoutMs = 350
     });
 }
 
-async function startOnlineGameForUser(user, successMessage) {
+async function prepareOnlinePlayerForUser(user, successMessage = '') {
     let gameAlias;
     try {
         gameAlias = await resolveGameAliasForUser(user, googleAliasInput?.value || aliasInput?.value || '');
@@ -641,6 +706,7 @@ async function startOnlineGameForUser(user, successMessage) {
         if (error?.code === 'alias-required') {
             authButton.disabled = false;
             setProviderSignInButtonsDisabled(false);
+            setOnlinePlayReady(false);
             showGoogleAliasPrompt(user);
             return false;
         }
@@ -656,18 +722,27 @@ async function startOnlineGameForUser(user, successMessage) {
         rememberPasswordCheckbox.checked = true;
     }
     clearLegacySavedPassword();
-    infoText.textContent = successMessage;
+    infoText.textContent = successMessage || `Signed in as ${gameAlias}. Press Play Online when ready.`;
+    setOnlinePlayReady(true, gameAlias);
 
     await clearFreshStartRemoteLeaderboard();
-
-    setTimeout(() => {
-        hideLoginScreen();
-        startGameLogic();
-        state.setCurrentGameState(state.GameState.Playing);
-        authButton.disabled = false;
-        setProviderSignInButtonsDisabled(false);
-    }, 1000);
+    authButton.disabled = false;
+    setProviderSignInButtonsDisabled(false);
     return true;
+}
+
+function startOnlineRun() {
+    if (!state.getUserId() || state.getUserId() === 'local-player' || state.getActiveLeaderboardSource() !== 'global') {
+        infoText.textContent = 'Sign in first, then press Play Online.';
+        return;
+    }
+
+    requestMobileFullscreen();
+    audio.initializeAudio();
+    infoText.textContent = 'Starting online game...';
+    hideLoginScreen();
+    startGameLogic();
+    state.setCurrentGameState(state.GameState.Playing);
 }
 
 function buildGoogleProvider(GoogleAuthProvider) {
@@ -841,12 +916,14 @@ export function showLoginScreen() {
     }
     rememberPasswordCheckbox.checked = !!savedEmail;
     hideGoogleAliasPrompt();
+    setOnlinePlayReady(state.getActiveLeaderboardSource() === 'global' && !!state.getUserId() && state.getUserId() !== 'local-player', state.getDisplayName());
     clearLegacySavedPassword();
     aliasInput.value = '';
     setAuthMode(false); // Ensure it starts in Login mode
     infoText.textContent = 'Play locally now, or sign in for the online leaderboard.';
     if (gameOverControls) gameOverControls.style.display = 'none'; // Hide on login
     hideLeaderboardPanel();
+    hideAchievementsPanel();
     hideReplayControls();
 }
 
@@ -854,6 +931,7 @@ export function hideLoginScreen() {
     loginScreen.style.display = 'none';
     hideLoginStarfield();
     hideLeaderboardPanel();
+    hideAchievementsPanel();
     const canvasEl = document.getElementById('gameCanvas');
     if (canvasEl) canvasEl.style.display = 'block';
     if (gameOverControls) gameOverControls.style.display = 'none'; // Hide when starting game
@@ -1009,7 +1087,7 @@ async function handleAuthClick() {
             sessionPasswordCache = password;
             await offerBrowserPasswordSave(email, password, alias);
             clearLegacySavedPassword();
-            infoText.textContent = 'Registration successful! Starting game...';
+            infoText.textContent = 'Registration successful! Press Play Online when ready.';
         } else {
             // --- Login --- //
             userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -1028,20 +1106,13 @@ async function handleAuthClick() {
             }
             await offerBrowserPasswordSave(email, password, userCredential.user.displayName || email);
             clearLegacySavedPassword();
-            infoText.textContent = 'Login successful! Starting game...';
+            infoText.textContent = 'Login successful! Press Play Online when ready.';
         }
 
         await clearFreshStartRemoteLeaderboard();
-
-        // --- Start Game (Common for both) ---
-        // Delay slightly to show success message
-        setTimeout(() => {
-            hideLoginScreen();
-            startGameLogic();
-            state.setCurrentGameState(state.GameState.Playing);
-            authButton.disabled = false; // Re-enable button for next time
-            setProviderSignInButtonsDisabled(false);
-        }, 1000);
+        setOnlinePlayReady(true, state.getDisplayName());
+        authButton.disabled = false;
+        setProviderSignInButtonsDisabled(false);
 
     } catch (error) {
         console.error("Authentication error:", error);
@@ -1069,7 +1140,7 @@ async function startProviderSignIn(providerLabel, providerId, providerFactory) {
 
         if (auth.currentUser) {
             if (userHasProvider(auth.currentUser, providerId)) {
-                await startOnlineGameForUser(auth.currentUser, `Already signed in with ${providerLabel}. Starting game...`);
+                await prepareOnlinePlayerForUser(auth.currentUser, `Already signed in with ${providerLabel}. Press Play Online when ready.`);
                 return;
             }
 
@@ -1089,7 +1160,7 @@ async function startProviderSignIn(providerLabel, providerId, providerFactory) {
         }
 
         const userCredential = await signInWithPopup(auth, provider);
-        await startOnlineGameForUser(userCredential.user, `${providerLabel} sign-in successful! Starting game...`);
+        await prepareOnlinePlayerForUser(userCredential.user, `${providerLabel} sign-in successful! Press Play Online when ready.`);
     } catch (error) {
         console.error(`${providerLabel} sign-in error:`, error);
         sessionStorage.removeItem('zipzip_providerRedirectPending');
@@ -1154,7 +1225,7 @@ async function handleGoogleAliasSaveClick() {
 
     try {
         await saveGameAlias(pendingGoogleAliasUser, alias);
-        await startOnlineGameForUser(pendingGoogleAliasUser, 'Alias saved! Starting game...');
+        await prepareOnlinePlayerForUser(pendingGoogleAliasUser, 'Alias saved! Press Play Online when ready.');
     } catch (error) {
         console.error("Online alias save error:", error);
         infoText.textContent = error?.message || 'Could not save alias. Try again.';
@@ -1333,6 +1404,7 @@ async function handleQuitClick() {
         state.setPlayerInfo('local-player', localAliasInput?.value || 'Local Player');
         state.setActiveLeaderboardSource('local');
         state.clearLeaderboardCache();
+        setOnlinePlayReady(false);
         infoText.textContent = 'Signed out. Choose a sign-in method or play local.';
     } catch (error) {
         console.error("Sign out error:", error);
@@ -1480,12 +1552,14 @@ async function initializeAuthStateListener() {
                     if (savedAlias) {
                         state.setPlayerInfo(user.uid, savedAlias);
                         state.setActiveLeaderboardSource('global');
+                        setOnlinePlayReady(true, savedAlias);
                         if (!pendingProvider) {
                             infoText.textContent = `Signed in as ${savedAlias}. Start an online run when ready.`;
                         }
                     } else if (requiresManualAlias(user)) {
                         state.setPlayerInfo(user.uid, 'Online Player');
                         state.setActiveLeaderboardSource('global');
+                        setOnlinePlayReady(false);
                         showGoogleAliasPrompt(user);
                     }
                 }
@@ -1493,6 +1567,7 @@ async function initializeAuthStateListener() {
             } else {
                 console.log("No user signed in.");
                 if (quitButton) quitButton.textContent = 'Quit';
+                setOnlinePlayReady(false);
             }
             authButton.disabled = false;
             setProviderSignInButtonsDisabled(false);
@@ -1527,7 +1602,7 @@ async function handleGoogleRedirectResult() {
         if (redirectUser) {
             setProviderSignInButtonsDisabled(true);
             authButton.disabled = true;
-            await startOnlineGameForUser(redirectUser, `${providerLabel} sign-in successful! Starting game...`);
+            await prepareOnlinePlayerForUser(redirectUser, `${providerLabel} sign-in successful! Press Play Online when ready.`);
         } else {
             authButton.disabled = false;
             setProviderSignInButtonsDisabled(false);
@@ -1577,9 +1652,12 @@ export function initializeUI() {
     if (!googleAliasPanel) console.error('googleAliasPanel not found during init!');
     if (!googleAliasInput) console.error('googleAliasInput not found during init!');
     if (!googleAliasSaveButton) console.error('googleAliasSaveButton not found during init!');
+    if (!onlinePlayButton) console.error('onlinePlayButton not found during init!');
     if (!quitButton) console.error('quitButton not found during init!');
     if (!localPlayButton) console.error('localPlayButton not found during init!');
     if (!leaderboardButton) console.error('leaderboardButton not found!');
+    if (!achievementsButton) console.error('achievementsButton not found!');
+    if (!achievementsPanel) console.error('achievementsPanel not found!');
     if (!leaderboardPanel) console.error('leaderboardPanel not found!');
     if (!gameOverLeaderboardPanel) console.error('gameOverLeaderboardPanel not found!');
     if (!resetPasswordLink) console.error('resetPasswordLink not found during init!'); // Add check
@@ -1628,12 +1706,21 @@ export function initializeUI() {
     if (googleAliasSaveButton) {
         googleAliasSaveButton.addEventListener('click', handleGoogleAliasSaveClick);
     }
+    if (onlinePlayButton) {
+        onlinePlayButton.addEventListener('click', startOnlineRun);
+    }
     quitButton.addEventListener('click', handleQuitClick);
     if (localPlayButton) {
         localPlayButton.addEventListener('click', handleLocalPlayClick);
     }
     if (leaderboardButton) {
         leaderboardButton.addEventListener('click', () => showLeaderboardPanel(true, 'local'));
+    }
+    if (achievementsButton) {
+        achievementsButton.addEventListener('click', showAchievementsPanel);
+    }
+    if (achievementsBackButton) {
+        achievementsBackButton.addEventListener('click', hideAchievementsPanel);
     }
     if (leaderboardRefreshButton) {
         leaderboardRefreshButton.addEventListener('click', () => showLeaderboardPanel(true, menuLeaderboardSource));

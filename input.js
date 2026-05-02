@@ -1,17 +1,16 @@
 // This file will handle keyboard and gamepad input 
-import * as state from './state.js?v=mobile-portrait-71';
-import * as audio from './audio.js?v=mobile-portrait-71';
-import * as ui from './ui.js?v=mobile-portrait-71';
-import { player } from './entities.js?v=mobile-portrait-71';
-import { AXIS_DEADZONE, PLAYER_JUMP_POWER, PLAYER_DASH_POWER, PLAYER_DASH_DURATION, PLAYER_DASH_COOLDOWN, PLAYER_GRAVITY } from './constants.js?v=mobile-portrait-71';
-import { getPlatforms } from './state.js?v=mobile-portrait-71'; // Import getPlatforms
+import * as state from './state.js?v=mobile-portrait-73';
+import * as audio from './audio.js?v=mobile-portrait-73';
+import * as ui from './ui.js?v=mobile-portrait-73';
+import { player } from './entities.js?v=mobile-portrait-73';
+import { AXIS_DEADZONE, PLAYER_JUMP_POWER } from './constants.js?v=mobile-portrait-73';
+import { getPlatforms } from './state.js?v=mobile-portrait-73'; // Import getPlatforms
 
 // --- Input State (shared within this module) ---
 export const keys = {
     left: false,
     right: false,
-    up: false,
-    dash: false
+    up: false
 };
 
 let pauseStartTime = 0; // Track when pause began
@@ -77,15 +76,6 @@ function handleKeyDown(e) {
             }
             keys.up = true;
             break;
-        // NEW: Dash controls
-        case 'KeyQ':
-            console.log("Q key detected for left dash!");
-            triggerDash('left');
-            break;
-        case 'KeyE':
-            console.log("E key detected for right dash!");
-            triggerDash('right');
-            break;
         default:
             // Handle other keys if needed
             break;
@@ -98,9 +88,6 @@ function handleKeyUp(e) {
         case 'ArrowLeft': case 'KeyA': keys.left = false; break;
         case 'ArrowRight': case 'KeyD': keys.right = false; break;
         case 'ArrowUp': case 'KeyW': case 'Space': keys.up = false; break;
-        // Key up for Q and E don't need specific actions for dash
-        case 'KeyQ': break; 
-        case 'KeyE': break;
     }
 }
 
@@ -242,8 +229,6 @@ function setupTouchControls() {
 // --- Gamepad Input Handling ---
 let wasStartPressed = false; 
 let wasJumpPressed = false; 
-let wasL1Pressed = false; // NEW: Track L1 (Button 4)
-let wasR1Pressed = false; // NEW: Track R1 (Button 5)
 let activeGamepadInfo = null;
 let lastAnnouncedGamepadKey = '';
 
@@ -264,7 +249,7 @@ function classifyGamepad(gamepad) {
             index: gamepad.index,
             family: 'playstation',
             label: /dualsense|ps5/.test(normalizedId) ? 'PS5 controller' : 'PlayStation controller',
-            hint: 'LEFT STICK MOVE   X JUMP   L1/R1 DASH   OPTIONS PAUSE'
+            hint: 'LEFT STICK MOVE   X JUMP   OPTIONS PAUSE'
         };
     }
 
@@ -274,7 +259,7 @@ function classifyGamepad(gamepad) {
             index: gamepad.index,
             family: 'xbox',
             label: 'Xbox controller',
-            hint: 'LEFT STICK MOVE   A JUMP   LB/RB DASH   MENU PAUSE'
+            hint: 'LEFT STICK MOVE   A JUMP   MENU PAUSE'
         };
     }
 
@@ -283,7 +268,7 @@ function classifyGamepad(gamepad) {
         index: gamepad?.index || 0,
         family: 'generic',
         label: 'Controller',
-        hint: 'LEFT STICK MOVE   SOUTH BUTTON JUMP   SHOULDERS DASH   START PAUSE'
+        hint: 'LEFT STICK MOVE   SOUTH BUTTON JUMP   START PAUSE'
     };
 }
 
@@ -329,7 +314,7 @@ export function getCurrentControlHint() {
     const gamepadInfo = getActiveGamepadInfo();
     if (gamepadInfo) return gamepadInfo.hint;
     if (document.body?.classList.contains('mobile-viewport')) return '';
-    return 'A/D MOVE   SPACE JUMP   Q/E DASH   ESC PAUSE';
+    return 'A/D MOVE   SPACE JUMP   ESC PAUSE';
 }
 
 window.__cosmicZipGetControlHint = getCurrentControlHint;
@@ -339,8 +324,6 @@ export function handleGamepadInput() {
     if (!gp) {
         wasStartPressed = false;
         wasJumpPressed = false;
-        wasL1Pressed = false; // Reset if controller disconnects
-        wasR1Pressed = false; // Reset if controller disconnects
         activeGamepadInfo = null;
         return;
     }
@@ -348,8 +331,6 @@ export function handleGamepadInput() {
     updateActiveGamepad(gp, true);
     const startPressed = gp.buttons[9] && gp.buttons[9].pressed;
     const jumpPressed = gp.buttons[0] && gp.buttons[0].pressed;
-    const l1Pressed = gp.buttons[4] && gp.buttons[4].pressed; // L1
-    const r1Pressed = gp.buttons[5] && gp.buttons[5].pressed; // R1
     const currentGameState = state.getCurrentGameState();
 
     // --- Audio Initialization (if needed) ---
@@ -574,18 +555,6 @@ export function handleGamepadInput() {
             triggerJump();
         }
 
-        // Dash Left (Button 4: L1)
-        if (l1Pressed && !wasL1Pressed) {
-            console.log("Gamepad L1 detected!");
-            triggerDash('left');
-        }
-        
-        // Dash Right (Button 5: R1)
-        if (r1Pressed && !wasR1Pressed) {
-            console.log("Gamepad R1 detected!");
-            triggerDash('right');
-        }
-
         // Reset nav states when playing
         gamepadNavState.left = gamepadNavState.right = false;
         gamepadNavState.up = gamepadNavState.down = false; // Reset pause state
@@ -603,8 +572,6 @@ export function handleGamepadInput() {
     // --- Update wasPressed states AFTER all checks for the current frame ---
     wasStartPressed = startPressed;
     wasJumpPressed = jumpPressed;
-    wasL1Pressed = l1Pressed; // Update L1 state
-    wasR1Pressed = r1Pressed; // Update R1 state
 }
 
 // --- Toggle Pause Function ---
@@ -651,30 +618,6 @@ function triggerJump() {
         player.velocityY = -(player.jumpPower || PLAYER_JUMP_POWER);
         player.isGrounded = false;
         player.jumpsLeft--;
-    }
-}
-
-function triggerDash(direction) {
-    const now = Date.now();
-    if (!player.isDashing && now - player.lastDashTime > PLAYER_DASH_COOLDOWN) {
-        player.isDashing = true;
-        player.lastDashTime = now;
-        // Dash direction based on trigger or fallback
-        let dashDir = (direction === 'right' ? 1 : direction === 'left' ? -1 : (player.velocityX !== 0 ? Math.sign(player.velocityX) : 1));
-        player.facing = dashDir;
-        player.velocityX = dashDir * PLAYER_DASH_POWER;
-        player.gravity = 0; // Temporarily disable gravity
-        player.velocityY = 0; // Also reset vertical velocity on dash
-
-        console.log(`Dash triggered: Dir=${dashDir}, VelX=${player.velocityX}`);
-
-        // Set timeout to end dash
-        setTimeout(() => {
-            player.isDashing = false;
-            player.gravity = player.baseGravity || PLAYER_GRAVITY; // Restore gravity
-            player.velocityX = 0; // <<< ADD THIS LINE TO STOP HORIZONTAL MOVEMENT
-            console.log("Dash ended.");
-        }, PLAYER_DASH_DURATION);
     }
 }
 

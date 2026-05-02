@@ -1,11 +1,10 @@
     // This file will define entity structures (player, platform)
     import {
         R64, PLAYER_SPEED, PLAYER_JUMP_POWER, PLAYER_GRAVITY,
-        PLAYER_DASH_POWER, PLAYER_DASH_DURATION, PLAYER_DASH_COOLDOWN,
         PLATFORM_BASE_WIDTH, PLATFORM_HEIGHT, PLATFORM_MIDDLE_THRESHOLD,
         MOVING_PLATFORM_SPEED,
         PLATFORM_FLASH_INTERVAL_MAX
-    } from './constants.js?v=mobile-portrait-71';
+    } from './constants.js?v=mobile-portrait-73';
 
     // --- Player Definition ---
     export const player = {
@@ -21,16 +20,11 @@
         jumpPower: PLAYER_JUMP_POWER,
         baseGravity: PLAYER_GRAVITY,
         gravity: PLAYER_GRAVITY,
-        dashPower: PLAYER_DASH_POWER,
-        dashDuration: PLAYER_DASH_DURATION,
-        dashCooldown: PLAYER_DASH_COOLDOWN,
         // State variables
         isGrounded: false,
         visible: true,
         currentFriction: 0.1,
         jumpsLeft: 2,
-        isDashing: false,
-        lastDashTime: 0,
         facing: 1,
         fallTumbleTime: 0,
         tumbleActive: false,

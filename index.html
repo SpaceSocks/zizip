@@ -10,9 +10,9 @@
     <meta name="theme-color" content="#05070c">
     <title>Cosmic Zip</title>
     <link rel="preload" href="Fonts/Petitinho.ttf?v=petitinho-real-1" as="font" type="font/ttf" crossorigin>
-    <link rel="stylesheet" href="style.css?v=mobile-portrait-72">
+    <link rel="stylesheet" href="style.css?v=mobile-portrait-73">
     <link rel="icon" type="image/png" href="favicon.png?v=cosmic-zip-2">
-    <link rel="manifest" href="manifest.webmanifest?v=mobile-portrait-72">
+    <link rel="manifest" href="manifest.webmanifest?v=mobile-portrait-73">
     <!-- <script src="https://download.playfab.com/PlayFabClientApi.js"></script> -->
 </head>
 <body>
@@ -48,9 +48,10 @@
                             <label for="googleAliasInput">Choose your Cosmic Zip alias</label>
                             <div class="google-alias-row">
                                 <input type="text" id="googleAliasInput" name="google-display-name" placeholder="Leaderboard alias" maxlength="15" autocomplete="nickname">
-                                <button id="googleAliasSaveButton" type="button">Save & Play</button>
+                                <button id="googleAliasSaveButton" type="button">Save Alias</button>
                             </div>
                         </div>
+                        <button id="onlinePlayButton" class="auth-button primary-action online-play-button" type="button" disabled>Play Online</button>
                     </div>
 
                     <div class="auth-divider">Email login</div>
@@ -96,6 +97,7 @@
             <!-- NEW Options Button -->
             <div class="menu-actions">
                 <button id="leaderboardButton" class="auth-button" type="button">Leaderboard</button>
+                <button id="achievementsButton" class="auth-button" type="button">Achievements</button>
                 <button id="optionsButton" class="auth-button" type="button">Options</button>
             </div>
 
@@ -119,6 +121,17 @@
             <div class="menu-actions">
                 <button id="leaderboardRefreshButton" class="menu-button game-button">Refresh</button>
                 <button id="leaderboardBackButton" class="menu-button game-button">Back</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="achievementsPanel" class="menu-overlay" style="display: none;">
+        <div class="menu-card achievements-card">
+            <h2>Achievements</h2>
+            <div id="achievementsSummary" class="achievements-summary">0% complete</div>
+            <div id="achievementsList" class="achievements-list"></div>
+            <div class="menu-actions">
+                <button id="achievementsBackButton" class="menu-button game-button">Back</button>
             </div>
         </div>
     </div>
@@ -264,7 +277,7 @@
     </div>
 
     <!-- Load main script as a module -->
-    <script type="module" src="game.js?v=mobile-portrait-72"></script>
+    <script type="module" src="game.js?v=mobile-portrait-73"></script>
     <!-- Note: The Firebase SDKs are now imported within firebaseConfig.js -->
 </body>
 </html>

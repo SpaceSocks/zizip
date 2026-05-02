@@ -1,9 +1,9 @@
 // This file will handle graphics, drawing, and canvas resizing
 
-import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-71';
-import * as state from './state.js?v=mobile-portrait-71';
-import { player } from './entities.js?v=mobile-portrait-71'; // Need player for drawing
-import * as ui from './ui.js?v=mobile-portrait-71'; // Import ui module
+import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-73';
+import * as state from './state.js?v=mobile-portrait-73';
+import { player } from './entities.js?v=mobile-portrait-73'; // Need player for drawing
+import * as ui from './ui.js?v=mobile-portrait-73'; // Import ui module
 
 // --- Canvas Setup ---
 export const canvas = document.getElementById('gameCanvas');
@@ -115,6 +115,8 @@ const STAR_VARIANTS = [
 ];
 const STAR_SIZE_SCALE = 2;
 const WHITE_STAR_SPEED_SCALE = 3;
+const ACHIEVEMENT_TOAST_LIFETIME = 4200;
+const ACHIEVEMENT_TOAST_FADE = 350;
 
 let deathParticles = [];
 
@@ -263,6 +265,8 @@ function drawHUD(player) {
         ctx.fillText(`Playing: ${trackName}`, canvas.width / 2, yPos);
         ctx.font = '24px Petitinho'; // Reset font size
     }
+    const achievementToastY = trackName !== "None" ? yPos + 28 : yPos + 4;
+    drawAchievementToasts(canvas.width / 2, achievementToastY, canvas.width - 80, false);
 
     // --- Real-time Height Meter (Center Right) ---
     // Calculate current height relative to starting position
@@ -280,7 +284,7 @@ function drawHUD(player) {
     ctx.fillText(meterText, meterX, meterY);
 
     const controlHint = window.__cosmicZipGetControlHint?.()
-        || (document.body?.classList.contains('mobile-viewport') ? '' : 'A/D MOVE   SPACE JUMP   Q/E DASH   ESC PAUSE');
+        || (document.body?.classList.contains('mobile-viewport') ? '' : 'A/D MOVE   SPACE JUMP   ESC PAUSE');
     if (controlHint && state.getElapsedTime() < 9000 && state.getScore() < 30) {
         ctx.fillStyle = 'rgba(199, 220, 208, 0.88)';
         ctx.font = '18px Petitinho';
@@ -296,7 +300,7 @@ function drawHUD(player) {
         ctx.font = '22px Petitinho';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillText(`PERFECT STREAK ${perfectStreak}  x${comboMultiplier}`, canvas.width / 2, 78);
+        ctx.fillText(`PERFECT STREAK ${perfectStreak}  x${comboMultiplier}`, canvas.width / 2, achievementToastY + 36);
     }
 
     // REMOVED STATIC Indicator Lines
@@ -365,6 +369,7 @@ function drawCompactHUD(player) {
         ctx.font = '12px Petitinho';
         ctx.fillText(`Playing: ${trackName}`, halfWidth, top + 60, canvas.width - edge * 2);
     }
+    drawAchievementToasts(halfWidth, top + 82, canvas.width - edge * 2, true);
 
     ctx.fillStyle = R64.WHITE;
     ctx.font = `${Math.min(17, Math.max(14, Math.round(canvas.width * 0.04)))}px Petitinho`;
@@ -379,8 +384,48 @@ function drawCompactHUD(player) {
         ctx.font = '16px Petitinho';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillText(`PERFECT ${perfectStreak} x${comboMultiplier}`, halfWidth, top + 78, canvas.width - edge * 2);
+        ctx.fillText(`PERFECT ${perfectStreak} x${comboMultiplier}`, halfWidth, top + 122, canvas.width - edge * 2);
     }
+}
+
+function drawAchievementToasts(centerX, y, maxWidth, compact = false) {
+    const now = Date.now();
+    const popups = state.getAchievementPopups?.() || [];
+    if (!popups.length) return;
+
+    state.filterAchievementPopups?.(popup => now - popup.createdAt <= ACHIEVEMENT_TOAST_LIFETIME);
+    const visiblePopups = state.getAchievementPopups?.() || [];
+    if (!visiblePopups.length) return;
+
+    const popup = visiblePopups[0];
+    const age = now - popup.createdAt;
+    const fadeOutStart = ACHIEVEMENT_TOAST_LIFETIME - ACHIEVEMENT_TOAST_FADE;
+    const alpha = age < ACHIEVEMENT_TOAST_FADE
+        ? age / ACHIEVEMENT_TOAST_FADE
+        : age > fadeOutStart
+            ? (ACHIEVEMENT_TOAST_LIFETIME - age) / ACHIEVEMENT_TOAST_FADE
+            : 1;
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    const width = Math.min(maxWidth, compact ? 310 : 420);
+    const height = compact ? 38 : 46;
+    const x = centerX - width / 2;
+    ctx.fillStyle = 'rgba(46, 34, 47, 0.92)';
+    ctx.strokeStyle = R64.YELLOW;
+    ctx.lineWidth = compact ? 2 : 3;
+    ctx.fillRect(x, y, width, height);
+    ctx.strokeRect(x, y, width, height);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = R64.YELLOW;
+    ctx.font = `${compact ? 12 : 15}px Petitinho`;
+    ctx.fillText('ACHIEVEMENT UNLOCKED', centerX, y + (compact ? 5 : 6), width - 16);
+    ctx.fillStyle = R64.WHITE;
+    ctx.font = `${compact ? 15 : 19}px Petitinho`;
+    ctx.fillText(String(popup.title || '').toUpperCase(), centerX, y + (compact ? 19 : 24), width - 18);
+    ctx.restore();
 }
 
 function getDisplayedRunHeight(player) {

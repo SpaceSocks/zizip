@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-72';
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-72';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-73';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-73';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({
@@ -71,6 +71,44 @@ let ghostEnabled = localStorage.getItem(GHOST_ENABLED_KEY) !== 'false';
 let replayViewer = null;
 const pendingPersistentStats = new Map();
 let persistentStatsWriteScheduled = false;
+const ACHIEVEMENT_STORAGE_PREFIX = 'zipzip_achievements';
+const ACHIEVEMENTS = Object.freeze([
+    { id: 'first_run', title: 'First Zip', description: 'Start your first run.', metric: 'runs', target: 1 },
+    { id: 'runs_10', title: 'Again Again', description: 'Start 10 runs.', metric: 'runs', target: 10 },
+    { id: 'runs_50', title: 'Orbit Habit', description: 'Start 50 runs.', metric: 'runs', target: 50 },
+    { id: 'first_death', title: 'Space Oops', description: 'Fall for the first time.', metric: 'deaths', target: 1 },
+    { id: 'deaths_10', title: 'Helmet Tester', description: 'Fall 10 times.', metric: 'deaths', target: 10 },
+    { id: 'deaths_50', title: 'Crash Course', description: 'Fall 50 times.', metric: 'deaths', target: 50 },
+    { id: 'deaths_100', title: 'Gravity Scholar', description: 'Fall 100 times.', metric: 'deaths', target: 100 },
+    { id: 'height_100', title: 'Low Orbit', description: 'Reach 100 meters.', metric: 'bestHeight', target: 100, suffix: 'm' },
+    { id: 'height_500', title: 'Cloud Piercer', description: 'Reach 500 meters.', metric: 'bestHeight', target: 500, suffix: 'm' },
+    { id: 'height_1000', title: 'Kilometer Club', description: 'Reach 1,000 meters.', metric: 'bestHeight', target: 1000, suffix: 'm' },
+    { id: 'height_5000', title: 'Star Ladder', description: 'Reach 5,000 meters.', metric: 'bestHeight', target: 5000, suffix: 'm' },
+    { id: 'height_100000', title: 'Deep Space', description: 'Reach 100,000 meters.', metric: 'bestHeight', target: 100000, suffix: 'm' },
+    { id: 'height_1000000', title: 'Million Meter Dream', description: 'Reach 1,000,000 meters.', metric: 'bestHeight', target: 1000000, suffix: 'm' },
+    { id: 'height_100000000', title: 'Beyond The Board', description: 'Reach 100,000,000 meters.', metric: 'bestHeight', target: 100000000, suffix: 'm' },
+    { id: 'score_500', title: 'Score Spark', description: 'Score 500 points.', metric: 'bestScore', target: 500 },
+    { id: 'score_1000', title: 'Point Pilot', description: 'Score 1,000 points.', metric: 'bestScore', target: 1000 },
+    { id: 'score_5000', title: 'Score Comet', description: 'Score 5,000 points.', metric: 'bestScore', target: 5000 },
+    { id: 'score_10000', title: 'Score Supernova', description: 'Score 10,000 points.', metric: 'bestScore', target: 10000 },
+    { id: 'perfect_3', title: 'Clean Chain', description: 'Land 3 perfect jumps in a row.', metric: 'bestPerfectStreak', target: 3 },
+    { id: 'perfect_5', title: 'Sharp Boots', description: 'Land 5 perfect jumps in a row.', metric: 'bestPerfectStreak', target: 5 },
+    { id: 'perfect_10', title: 'Dead Center', description: 'Land 10 perfect jumps in a row.', metric: 'bestPerfectStreak', target: 10 },
+    { id: 'perfect_25', title: 'Perfect Orbit', description: 'Land 25 perfect jumps in a row.', metric: 'bestPerfectStreak', target: 25 }
+]);
+const DEFAULT_ACHIEVEMENT_STATS = Object.freeze({
+    runs: 0,
+    deaths: 0,
+    bestHeight: 0,
+    bestScore: 0,
+    bestPerfectStreak: 0
+});
+let achievementStateOwnerId = null;
+let achievementState = {
+    stats: { ...DEFAULT_ACHIEVEMENT_STATS },
+    unlocked: {}
+};
+let achievementPopups = [];
 
 function schedulePersistentStatWrite(key, value) {
     pendingPersistentStats.set(key, value);
@@ -123,6 +161,162 @@ function sanitizeStorageKeyPart(value) {
         .replace(/[^a-z0-9_-]+/g, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 96);
+}
+
+function getAchievementOwnerId() {
+    if (activeLeaderboardSource === 'local') {
+        return getLocalLeaderboardUserId(displayName);
+    }
+
+    if (userId && userId !== 'local-player') {
+        return `global-${userId}`;
+    }
+
+    return getLocalLeaderboardUserId(displayName);
+}
+
+function getAchievementStorageKey(ownerId = getAchievementOwnerId()) {
+    const safeOwnerId = sanitizeStorageKeyPart(ownerId);
+    return safeOwnerId ? `${ACHIEVEMENT_STORAGE_PREFIX}:${safeOwnerId}` : null;
+}
+
+function sanitizeAchievementSave(saveData = {}) {
+    const rawStats = saveData && typeof saveData.stats === 'object' ? saveData.stats : {};
+    const stats = { ...DEFAULT_ACHIEVEMENT_STATS };
+    Object.keys(stats).forEach(key => {
+        const value = Number(rawStats[key]);
+        stats[key] = Number.isFinite(value) ? Math.max(0, value) : 0;
+    });
+
+    const unlocked = {};
+    const rawUnlocked = saveData && typeof saveData.unlocked === 'object' ? saveData.unlocked : {};
+    ACHIEVEMENTS.forEach(achievement => {
+        if (rawUnlocked[achievement.id]) {
+            unlocked[achievement.id] = Number(rawUnlocked[achievement.id]) || Date.now();
+        }
+    });
+
+    return { stats, unlocked };
+}
+
+function loadAchievementStateForCurrentPlayer() {
+    const ownerId = getAchievementOwnerId();
+    if (achievementStateOwnerId === ownerId) return achievementState;
+
+    achievementStateOwnerId = ownerId;
+    achievementPopups = [];
+    const storageKey = getAchievementStorageKey(ownerId);
+    if (!storageKey) {
+        achievementState = sanitizeAchievementSave();
+        return achievementState;
+    }
+
+    try {
+        achievementState = sanitizeAchievementSave(JSON.parse(localStorage.getItem(storageKey) || 'null') || {});
+    } catch (error) {
+        console.warn("Could not read achievements. Resetting this player's achievement save.", error);
+        localStorage.removeItem(storageKey);
+        achievementState = sanitizeAchievementSave();
+    }
+
+    return achievementState;
+}
+
+function saveAchievementState() {
+    const storageKey = getAchievementStorageKey(achievementStateOwnerId || getAchievementOwnerId());
+    if (!storageKey) return;
+    schedulePersistentStatWrite(storageKey, JSON.stringify(achievementState));
+}
+
+function formatAchievementProgress(value, achievement) {
+    const rounded = Math.floor(value);
+    return achievement.suffix ? `${rounded.toLocaleString()}${achievement.suffix}` : rounded.toLocaleString();
+}
+
+function queueAchievementPopup(achievement) {
+    achievementPopups.push({
+        id: achievement.id,
+        title: achievement.title,
+        description: achievement.description,
+        createdAt: Date.now(),
+        alpha: 0
+    });
+    if (achievementPopups.length > 3) achievementPopups = achievementPopups.slice(-3);
+}
+
+function evaluateAchievements() {
+    loadAchievementStateForCurrentPlayer();
+    const now = Date.now();
+    let changed = false;
+
+    ACHIEVEMENTS.forEach(achievement => {
+        if (achievementState.unlocked[achievement.id]) return;
+        const value = achievementState.stats[achievement.metric] || 0;
+        if (value >= achievement.target) {
+            achievementState.unlocked[achievement.id] = now;
+            queueAchievementPopup(achievement);
+            changed = true;
+        }
+    });
+
+    if (changed) saveAchievementState();
+}
+
+function updateAchievementStat(metric, value, mode = 'max') {
+    loadAchievementStateForCurrentPlayer();
+    const currentValue = achievementState.stats[metric] || 0;
+    const nextValue = mode === 'add'
+        ? currentValue + value
+        : Math.max(currentValue, value);
+    if (nextValue === currentValue) return;
+    achievementState.stats[metric] = nextValue;
+    saveAchievementState();
+    evaluateAchievements();
+}
+
+export function getAchievementDefinitions() {
+    return ACHIEVEMENTS;
+}
+
+export function getAchievementProgress() {
+    loadAchievementStateForCurrentPlayer();
+    const items = ACHIEVEMENTS.map(achievement => {
+        const value = achievementState.stats[achievement.metric] || 0;
+        const unlockedAt = achievementState.unlocked[achievement.id] || null;
+        const clampedValue = Math.min(value, achievement.target);
+        return {
+            ...achievement,
+            value,
+            unlocked: !!unlockedAt,
+            unlockedAt,
+            progressText: `${formatAchievementProgress(clampedValue, achievement)} / ${formatAchievementProgress(achievement.target, achievement)}`,
+            percent: Math.max(0, Math.min(100, Math.round((clampedValue / achievement.target) * 100)))
+        };
+    });
+    const unlockedCount = items.filter(item => item.unlocked).length;
+    return {
+        items,
+        unlockedCount,
+        totalCount: items.length,
+        percent: items.length ? Math.round((unlockedCount / items.length) * 100) : 0,
+        stats: { ...achievementState.stats }
+    };
+}
+
+export function getAchievementPopups() {
+    return achievementPopups;
+}
+
+export function filterAchievementPopups(predicate) {
+    achievementPopups = achievementPopups.filter(predicate);
+}
+
+export function recordRunStartedAchievement() {
+    updateAchievementStat('runs', 1, 'add');
+}
+
+export function recordDeathAchievement() {
+    updateAchievementStat('deaths', 1, 'add');
 }
 
 function getBestRunReplayOwnerId() {
@@ -200,6 +394,7 @@ function syncDocumentGameClasses(gameState) {
 export const getScore = () => score;
 export function setScore(newScore) {
     score = newScore;
+    updateAchievementStat('bestScore', score);
 }
 
 export function registerPlatformLanding(landedOnMiddle) {
@@ -210,6 +405,8 @@ export function registerPlatformLanding(landedOnMiddle) {
         perfectLandingStreak = 0;
         comboMultiplier = 1;
     }
+
+    updateAchievementStat('bestPerfectStreak', perfectLandingStreak);
 
     return {
         streak: perfectLandingStreak,
@@ -233,6 +430,7 @@ export function setEndTime(time) {
 export const getMaxHeight = () => maxHeight;
 export function setMaxHeight(height) {
     maxHeight = height;
+    updateAchievementStat('bestHeight', maxHeight);
 }
 
 export function getAudioInitialized() { return audioInitialized; }
@@ -292,12 +490,15 @@ export const getActiveLeaderboardSource = () => activeLeaderboardSource;
 export function setActiveLeaderboardSource(source) {
     activeLeaderboardSource = source === 'global' ? 'global' : 'local';
     loadBestRunReplayForCurrentPlayer();
+    achievementStateOwnerId = null;
+    loadAchievementStateForCurrentPlayer();
 }
 
 // Add back lives getter/setter
 export const getLives = () => lives;
 export function loseLife() {
     lives--;
+    recordDeathAchievement();
     console.log(`Life lost! Lives remaining: ${lives}`); // Log remaining lives
 }
 export function resetLives() {
@@ -331,6 +532,7 @@ export function resetGameStats() {
     perfectLandingStreak = 0;
     comboMultiplier = 1;
     beginRunReplay();
+    recordRunStartedAchievement();
 }
 
 export function beginRunReplay() {
@@ -1633,6 +1835,8 @@ export function setPlayerInfo(uid, name) {
     userId = uid;
     displayName = name || 'Anon'; // Use Anon if name is null/empty
     loadBestRunReplayForCurrentPlayer();
+    achievementStateOwnerId = null;
+    loadAchievementStateForCurrentPlayer();
 }
 
 // Add back setter for difficultyFactor
