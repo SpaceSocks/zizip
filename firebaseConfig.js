@@ -1,7 +1,16 @@
 // Firebase is loaded lazily so local/offline play can boot without CDN access.
+const productionAuthHostnames = new Set([
+  "cosmiczip.net",
+  "www.cosmiczip.net"
+]);
+
+const authDomain = productionAuthHostnames.has(window.location.hostname)
+  ? "cosmiczip.net"
+  : "zipzip-d8d69.firebaseapp.com";
+
 const firebaseConfig = {
   apiKey: "AIzaSyBNl4-fwt3BoZ-ERO1JUOo8cFwrqndlU_k",
-  authDomain: "zipzip-d8d69.firebaseapp.com",
+  authDomain,
   projectId: "zipzip-d8d69",
   storageBucket: "zipzip-d8d69.firebasestorage.app",
   messagingSenderId: "331899133054",
