@@ -943,8 +943,8 @@ body:has(#loginScreen[style*="display: flex"]) {
 
 /* Style for focused option item */
 .options-item.focused {
-    background-color: rgba(249, 194, 43, 0.3); /* Use game button focus color, but lighter */
-    outline: 2px solid rgba(249, 194, 43, 0.5); /* Subtle outline */
+    background-color: transparent;
+    outline: none;
 }
 
 .options-item label {
