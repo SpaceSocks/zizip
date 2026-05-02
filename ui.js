@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-73';
-import * as audio from './audio.js?v=mobile-portrait-73'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-74';
+import * as audio from './audio.js?v=mobile-portrait-74'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-73';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-74';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-73';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-74';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -467,9 +467,18 @@ export async function showGameOverLeaderboard(force = true, source = gameOverLea
         const entries = await state.getLeaderboard(gameOverLeaderboardSource);
         if (requestId !== gameOverLeaderboardRequestId) return;
         renderLeaderboard(entries, gameOverLeaderboardList, 'gameover');
-        gameOverLeaderboardStatus.textContent = entries.length
-            ? `${gameOverLeaderboardSource === 'global' ? 'Global' : 'Local'} top 100 runs`
-            : `No ${gameOverLeaderboardSource === 'global' ? 'global' : 'local'} runs yet.`;
+        const submitStatus = typeof state.getLastGlobalSubmitStatus === 'function'
+            ? state.getLastGlobalSubmitStatus()
+            : null;
+        if (gameOverLeaderboardSource === 'global' && submitStatus && !submitStatus.ok) {
+            gameOverLeaderboardStatus.textContent = `Global save failed: ${submitStatus.message || 'try again after signing in.'}`;
+        } else if (gameOverLeaderboardSource === 'global' && submitStatus?.code === 'global-submit-no-replay') {
+            gameOverLeaderboardStatus.textContent = 'Global top 100 runs - score saved, replay unavailable';
+        } else {
+            gameOverLeaderboardStatus.textContent = entries.length
+                ? `${gameOverLeaderboardSource === 'global' ? 'Global' : 'Local'} top 100 runs`
+                : `No ${gameOverLeaderboardSource === 'global' ? 'global' : 'local'} runs yet.`;
+        }
     } catch (error) {
         if (requestId !== gameOverLeaderboardRequestId) return;
         console.warn("Could not load game-over leaderboard.", error);

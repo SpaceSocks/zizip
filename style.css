@@ -779,6 +779,15 @@ body.game-screen-active {
     width: min(94vw, 820px);
 }
 
+.achievements-card h2 {
+    max-width: 100%;
+    font-size: clamp(2rem, 6vw, 3.25rem);
+    line-height: 0.95;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+}
+
 .achievements-summary {
     margin: 0 0 14px;
     color: #f9c22b;
@@ -1571,6 +1580,10 @@ body.mobile-viewport .leaderboard-card {
 
 body.mobile-viewport .achievements-card {
     width: calc(var(--app-width) - 32px);
+}
+
+body.mobile-viewport .achievements-card h2 {
+    font-size: clamp(1.55rem, 8.5vw, 2.1rem);
 }
 
 body.mobile-viewport .achievement-row {

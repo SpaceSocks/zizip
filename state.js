@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-73';
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-73';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-74';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-74';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({
@@ -32,6 +32,7 @@ let activeLeaderboardSource = 'local';
 
 // NEW: Store last submitted score details for highlighting
 let lastSubmittedScore = null;
+let lastGlobalSubmitStatus = null;
 
 // NEW: Store current music track info
 let currentTrackInfo = "None";
@@ -84,6 +85,9 @@ const ACHIEVEMENTS = Object.freeze([
     { id: 'height_500', title: 'Cloud Piercer', description: 'Reach 500 meters.', metric: 'bestHeight', target: 500, suffix: 'm' },
     { id: 'height_1000', title: 'Kilometer Club', description: 'Reach 1,000 meters.', metric: 'bestHeight', target: 1000, suffix: 'm' },
     { id: 'height_5000', title: 'Star Ladder', description: 'Reach 5,000 meters.', metric: 'bestHeight', target: 5000, suffix: 'm' },
+    { id: 'height_10000', title: 'Signal Breaker', description: 'Reach 10,000 meters.', metric: 'bestHeight', target: 10000, suffix: 'm' },
+    { id: 'height_25000', title: 'Moon Elevator', description: 'Reach 25,000 meters.', metric: 'bestHeight', target: 25000, suffix: 'm' },
+    { id: 'height_50000', title: 'Starline Rider', description: 'Reach 50,000 meters.', metric: 'bestHeight', target: 50000, suffix: 'm' },
     { id: 'height_100000', title: 'Deep Space', description: 'Reach 100,000 meters.', metric: 'bestHeight', target: 100000, suffix: 'm' },
     { id: 'height_1000000', title: 'Million Meter Dream', description: 'Reach 1,000,000 meters.', metric: 'bestHeight', target: 1000000, suffix: 'm' },
     { id: 'height_100000000', title: 'Beyond The Board', description: 'Reach 100,000,000 meters.', metric: 'bestHeight', target: 100000000, suffix: 'm' },
@@ -91,10 +95,15 @@ const ACHIEVEMENTS = Object.freeze([
     { id: 'score_1000', title: 'Point Pilot', description: 'Score 1,000 points.', metric: 'bestScore', target: 1000 },
     { id: 'score_5000', title: 'Score Comet', description: 'Score 5,000 points.', metric: 'bestScore', target: 5000 },
     { id: 'score_10000', title: 'Score Supernova', description: 'Score 10,000 points.', metric: 'bestScore', target: 10000 },
+    { id: 'score_20000', title: 'Score Quasar', description: 'Score 20,000 points.', metric: 'bestScore', target: 20000 },
+    { id: 'score_30000', title: 'Point Meteor', description: 'Score 30,000 points.', metric: 'bestScore', target: 30000 },
+    { id: 'score_40000', title: 'Orbit Bank', description: 'Score 40,000 points.', metric: 'bestScore', target: 40000 },
+    { id: 'score_50000', title: 'Score Nebula', description: 'Score 50,000 points.', metric: 'bestScore', target: 50000 },
     { id: 'perfect_3', title: 'Clean Chain', description: 'Land 3 perfect jumps in a row.', metric: 'bestPerfectStreak', target: 3 },
-    { id: 'perfect_5', title: 'Sharp Boots', description: 'Land 5 perfect jumps in a row.', metric: 'bestPerfectStreak', target: 5 },
     { id: 'perfect_10', title: 'Dead Center', description: 'Land 10 perfect jumps in a row.', metric: 'bestPerfectStreak', target: 10 },
-    { id: 'perfect_25', title: 'Perfect Orbit', description: 'Land 25 perfect jumps in a row.', metric: 'bestPerfectStreak', target: 25 }
+    { id: 'perfect_25', title: 'Perfect Orbit', description: 'Land 25 perfect jumps in a row.', metric: 'bestPerfectStreak', target: 25 },
+    { id: 'perfect_50', title: 'Laser Feet', description: 'Land 50 perfect jumps in a row.', metric: 'bestPerfectStreak', target: 50 },
+    { id: 'perfect_100', title: 'Centerline Legend', description: 'Land 100 perfect jumps in a row.', metric: 'bestPerfectStreak', target: 100 }
 ]);
 const DEFAULT_ACHIEVEMENT_STATS = Object.freeze({
     runs: 0,
@@ -493,6 +502,7 @@ export function setActiveLeaderboardSource(source) {
     achievementStateOwnerId = null;
     loadAchievementStateForCurrentPlayer();
 }
+export const getLastGlobalSubmitStatus = () => lastGlobalSubmitStatus;
 
 // Add back lives getter/setter
 export const getLives = () => lives;
@@ -1362,6 +1372,125 @@ async function submitGlobalLeaderboardViaRest(idToken, leaderboardUserId, entryD
     return { skipped: false, id: documentId };
 }
 
+function normalizeGlobalSubmitError(error) {
+    return {
+        ok: false,
+        code: error?.code || error?.name || 'global-submit-failed',
+        message: error?.message || 'Could not save this run to the global leaderboard.'
+    };
+}
+
+function makeGlobalSubmitStatus(ok, details = {}) {
+    return {
+        ok,
+        code: details.code || (ok ? 'global-submit-ok' : 'global-submit-failed'),
+        message: details.message || '',
+        usedReplay: !!details.usedReplay,
+        skipped: !!details.skipped
+    };
+}
+
+function getReplaylessEntryData(entryData) {
+    return {
+        ...entryData,
+        replay: null
+    };
+}
+
+async function submitGlobalLeaderboardViaRestWithReplayFallback(idToken, leaderboardUserId, entryData) {
+    try {
+        const result = await submitGlobalLeaderboardViaRest(idToken, leaderboardUserId, entryData);
+        return makeGlobalSubmitStatus(true, { usedReplay: !!entryData.replay, skipped: !!result?.skipped });
+    } catch (fullReplayError) {
+        if (!entryData.replay) throw fullReplayError;
+        console.warn("Global REST submit with replay failed. Retrying score without replay.", fullReplayError);
+        const result = await submitGlobalLeaderboardViaRest(idToken, leaderboardUserId, getReplaylessEntryData(entryData));
+        return makeGlobalSubmitStatus(true, {
+            usedReplay: false,
+            skipped: !!result?.skipped,
+            code: 'global-submit-no-replay',
+            message: 'Global score saved without replay data.'
+        });
+    }
+}
+
+async function upsertGlobalLeaderboardEntrySdk(firestoreApi, playerName, leaderboardUserId, entryData) {
+    const {
+        db,
+        collection,
+        addDoc,
+        doc,
+        getDocs,
+        query,
+        where,
+        updateDoc,
+        serverTimestamp
+    } = firestoreApi;
+    const leaderboardRef = collection(db, LEADERBOARD_COLLECTION);
+    const userQuery = query(leaderboardRef, where('userId', '==', leaderboardUserId));
+    const userSnapshot = await getDocs(userQuery);
+    let existingDoc = null;
+    let existingData = null;
+    userSnapshot.docs.forEach(candidateDoc => {
+        const candidateData = candidateDoc.data();
+        const candidateIsBetter = !existingData ||
+            (candidateData.score || 0) > (existingData.score || 0) ||
+            ((candidateData.score || 0) === (existingData.score || 0) &&
+                (candidateData.maxHeight || 0) > (existingData.maxHeight || 0));
+        if (candidateIsBetter) {
+            existingDoc = candidateDoc;
+            existingData = candidateData;
+        }
+    });
+    const isBetter = !existingData || entryData.score > (existingData.score || 0) ||
+        (entryData.score === (existingData.score || 0) && entryData.maxHeight > (existingData.maxHeight || 0)) ||
+        (entryData.score === (existingData.score || 0) && entryData.maxHeight === (existingData.maxHeight || 0) && entryData.replay && !existingData.replay);
+
+    if (!isBetter) {
+        console.log("Run did not beat this player's stored leaderboard run. Keeping old replay.");
+        return makeGlobalSubmitStatus(true, { usedReplay: !!existingData?.replay, skipped: true });
+    }
+
+    const submitData = {
+        userId: leaderboardUserId,
+        displayName: playerName,
+        score: entryData.score,
+        maxHeight: entryData.maxHeight,
+        time: entryData.time,
+        replay: entryData.replay,
+        updatedAt: serverTimestamp()
+    };
+
+    if (existingDoc) {
+        await updateDoc(doc(db, LEADERBOARD_COLLECTION, existingDoc.id), submitData);
+        console.log("Leaderboard entry updated successfully!");
+    } else {
+        await addDoc(leaderboardRef, {
+            ...submitData,
+            timestamp: serverTimestamp()
+        });
+        console.log("Leaderboard entry added successfully!");
+    }
+
+    return makeGlobalSubmitStatus(true, { usedReplay: !!entryData.replay });
+}
+
+async function upsertGlobalLeaderboardEntrySdkWithReplayFallback(firestoreApi, playerName, leaderboardUserId, entryData) {
+    try {
+        return await upsertGlobalLeaderboardEntrySdk(firestoreApi, playerName, leaderboardUserId, entryData);
+    } catch (fullReplayError) {
+        if (!entryData.replay) throw fullReplayError;
+        console.warn("Global SDK submit with replay failed. Retrying score without replay.", fullReplayError);
+        const result = await upsertGlobalLeaderboardEntrySdk(firestoreApi, playerName, leaderboardUserId, getReplaylessEntryData(entryData));
+        return {
+            ...result,
+            usedReplay: false,
+            code: result.skipped ? result.code : 'global-submit-no-replay',
+            message: result.skipped ? result.message : 'Global score saved without replay data.'
+        };
+    }
+}
+
 async function getFirestoreApi() {
     if (!firestoreApiPromise) {
         firestoreApiPromise = (async () => {
@@ -1422,6 +1551,7 @@ export function clearLocalLeaderboardForFreshStart() {
     localLeaderboardCache = null;
     lastFetchTime = Date.now();
     lastSubmittedScore = null;
+    lastGlobalSubmitStatus = null;
     bestRunReplay = null;
     bestRunReplayOwnerId = null;
     topScore = 0;
@@ -1440,6 +1570,7 @@ export async function clearRemoteLeaderboardForFreshStart() {
     localLeaderboardCache = null;
     lastFetchTime = Date.now();
     lastSubmittedScore = null;
+    lastGlobalSubmitStatus = null;
     console.log("Remote leaderboard reset migration skipped; client deletes are disabled.");
     return { skipped: true, deleted: 0 };
 }
@@ -1701,6 +1832,7 @@ export async function addLeaderboardEntry(playerName, score, maxHeight, time) {
     // Store details before sending to Firestore (create an object for storage)
     const entryDataForHighlight = { score, maxHeight, time };
     lastSubmittedScore = { ...entryDataForHighlight, userId: leaderboardUserId }; // Store a copy
+    lastGlobalSubmitStatus = null;
     console.log("Storing last submitted score for highlighting:", lastSubmittedScore);
 
     // Always keep a local copy so game-over can show the latest run even if mobile
@@ -1708,6 +1840,11 @@ export async function addLeaderboardEntry(playerName, score, maxHeight, time) {
     addLocalLeaderboardEntry(playerName, score, maxHeight, time, replay);
 
     if (activeLeaderboardSource === 'local') {
+        lastGlobalSubmitStatus = makeGlobalSubmitStatus(true, {
+            skipped: true,
+            code: 'local-run',
+            message: 'Local run saved locally.'
+        });
         return;
     }
 
@@ -1720,61 +1857,15 @@ export async function addLeaderboardEntry(playerName, score, maxHeight, time) {
         leaderboardUserId = authUser.uid;
         lastSubmittedScore = { ...entryDataForHighlight, userId: leaderboardUserId };
 
-        const {
-            db,
-            collection,
-            addDoc,
-            doc,
-            getDocs,
-            query,
-            where,
-            updateDoc,
-            serverTimestamp
-        } = await getFirestoreApi();
-        const leaderboardRef = collection(db, LEADERBOARD_COLLECTION);
-        const userQuery = query(leaderboardRef, where('userId', '==', leaderboardUserId));
-        const userSnapshot = await getDocs(userQuery);
-        let existingDoc = null;
-        let existingData = null;
-        userSnapshot.docs.forEach(candidateDoc => {
-            const candidateData = candidateDoc.data();
-            const candidateIsBetter = !existingData ||
-                (candidateData.score || 0) > (existingData.score || 0) ||
-                ((candidateData.score || 0) === (existingData.score || 0) &&
-                    (candidateData.maxHeight || 0) > (existingData.maxHeight || 0));
-            if (candidateIsBetter) {
-                existingDoc = candidateDoc;
-                existingData = candidateData;
-            }
+        const firestoreApi = await getFirestoreApi();
+        lastGlobalSubmitStatus = await upsertGlobalLeaderboardEntrySdkWithReplayFallback(firestoreApi, playerName, leaderboardUserId, {
+            userId: leaderboardUserId,
+            displayName: playerName,
+            score,
+            maxHeight,
+            time,
+            replay
         });
-        const isBetter = !existingData || score > (existingData.score || 0) ||
-            (score === (existingData.score || 0) && maxHeight > (existingData.maxHeight || 0)) ||
-            (score === (existingData.score || 0) && maxHeight === (existingData.maxHeight || 0) && replay && !existingData.replay);
-
-        if (isBetter) {
-            const entryData = {
-                userId: leaderboardUserId,
-                displayName: playerName,
-                score,
-                maxHeight,
-                time,
-                replay,
-                updatedAt: serverTimestamp()
-            };
-
-            if (existingDoc) {
-                await updateDoc(doc(db, LEADERBOARD_COLLECTION, existingDoc.id), entryData);
-                console.log("Leaderboard entry updated successfully!");
-            } else {
-                await addDoc(leaderboardRef, {
-                    ...entryData,
-                    timestamp: serverTimestamp()
-                });
-                console.log("Leaderboard entry added successfully!");
-            }
-        } else {
-            console.log("Run did not beat this player's stored leaderboard run. Keeping old replay.");
-        }
         // Invalidate local cache so next fetch gets the new score
         localLeaderboardCache = null;
         lastFetchTime = 0;
@@ -1793,13 +1884,14 @@ export async function addLeaderboardEntry(playerName, score, maxHeight, time) {
                 time,
                 replay
             };
-            await submitGlobalLeaderboardViaRest(idToken, leaderboardUserId, restEntryData);
+            lastGlobalSubmitStatus = await submitGlobalLeaderboardViaRestWithReplayFallback(idToken, leaderboardUserId, restEntryData);
             localLeaderboardCache = null;
             lastFetchTime = 0;
             lastSubmittedScore = { ...entryDataForHighlight, userId: leaderboardUserId };
             console.log("Leaderboard entry submitted through REST fallback.");
         } catch (fallbackError) {
             console.warn("Remote leaderboard submit failed. Keeping this run local-only.", fallbackError);
+            lastGlobalSubmitStatus = normalizeGlobalSubmitError(fallbackError);
         }
     }
 }
@@ -1809,6 +1901,7 @@ export function clearLeaderboardCache() {
     localLeaderboardCache = null;
     lastFetchTime = 0;
     lastSubmittedScore = null; // Clear highlight marker
+    lastGlobalSubmitStatus = null;
     console.log("Local leaderboard cache and highlight cleared.");
 }
 
