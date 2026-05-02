@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-78';
-import * as audio from './audio.js?v=mobile-portrait-78'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-79';
+import * as audio from './audio.js?v=mobile-portrait-79'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-78';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-79';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-78';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-79';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -315,8 +315,13 @@ function hideAchievementsPanel() {
 
 function renderAchievementsPanel() {
     if (!achievementsList || !achievementsSummary) return;
-    const progress = state.getAchievementProgress();
-    achievementsSummary.textContent = `${progress.unlockedCount} / ${progress.totalCount} unlocked - ${progress.percent}% complete`;
+    const hasOnlinePlayer = !!state.getUserId() && !state.isLocalPlayer();
+    const progress = hasOnlinePlayer
+        ? state.getAchievementProgress()
+        : state.getLockedAchievementProgress();
+    achievementsSummary.textContent = hasOnlinePlayer
+        ? `${progress.unlockedCount} / ${progress.totalCount} unlocked - ${progress.percent}% complete`
+        : `Sign in to track achievements - 0 / ${progress.totalCount} unlocked`;
     achievementsList.replaceChildren();
 
     progress.items.forEach(achievement => {
