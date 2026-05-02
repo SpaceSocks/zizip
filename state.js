@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-54';
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-54';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-55';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-55';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({
@@ -403,7 +403,7 @@ export function recordRunReplaySample(sample) {
             ? Math.max(-1, Math.min(2, Math.round(sample.groundedOffsetRatio * 1000) / 1000))
             : null,
         platformSnapshots: Array.isArray(sample.platformSnapshots)
-            ? sample.platformSnapshots.slice(0, 8).map(snapshot => ({
+            ? sample.platformSnapshots.slice(0, 16).map(snapshot => ({
                 id: finiteReplayInteger(snapshot.id, -1, -1, 1000000),
                 x: Math.round(finiteReplayNumber(snapshot.x, 0, -5000, 5000) * 10) / 10,
                 y: Math.round(finiteReplayNumber(snapshot.y, 0, -5000, 15000) * 10) / 10
@@ -696,7 +696,7 @@ function compactReplayForStorage(replay) {
                     : null
             };
             const platformSnapshots = Array.isArray(sample.platformSnapshots)
-                ? sample.platformSnapshots.slice(0, 8).map(snapshot => [
+                ? sample.platformSnapshots.slice(0, 16).map(snapshot => [
                     finiteReplayInteger(snapshot.id, -1, -1, 1000000),
                     Math.round(finiteReplayNumber(snapshot.x, 0, -5000, 5000) * 10) / 10,
                     Math.round(finiteReplayNumber(snapshot.y, 0, -5000, 15000) * 10) / 10

@@ -1,9 +1,9 @@
 // This file will handle graphics, drawing, and canvas resizing
 
-import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-54';
-import * as state from './state.js?v=mobile-portrait-54';
-import { player } from './entities.js?v=mobile-portrait-54'; // Need player for drawing
-import * as ui from './ui.js?v=mobile-portrait-54'; // Import ui module
+import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-55';
+import * as state from './state.js?v=mobile-portrait-55';
+import { player } from './entities.js?v=mobile-portrait-55'; // Need player for drawing
+import * as ui from './ui.js?v=mobile-portrait-55'; // Import ui module
 
 // --- Canvas Setup ---
 export const canvas = document.getElementById('gameCanvas');
@@ -57,6 +57,11 @@ let leaderboardLoading = false;
 let leaderboardError = null;
 let leaderboardNotice = null;
 let leaderboardReplayHitboxes = [];
+let replayPlatformPositionCache = new Map();
+let replayPlatformPositionCacheKey = '';
+let replayPlatformPositionCacheTime = 0;
+
+const REPLAY_PLATFORM_CACHE_MAX_AGE_MS = 180;
 
 canvas.addEventListener('click', (event) => {
     if (state.getCurrentGameState() !== state.GameState.GameOver) return;
@@ -869,10 +874,41 @@ function drawPlatform(platform) {
     ctx.globalAlpha = 1.0;
 }
 
-function getReplayPlatformPosition(platform, timeMs, sample = null) {
+function getReplayCacheKey(viewer) {
+    const replay = viewer?.replay || {};
+    const entry = viewer?.entry || {};
+    return [
+        entry.id || entry.uid || entry.userId || entry.name || '',
+        replay.savedAt || '',
+        replay.duration || ''
+    ].join(':');
+}
+
+function syncReplayPlatformPositionCache(viewer) {
+    const cacheKey = getReplayCacheKey(viewer);
+    const timeMs = viewer?.time || 0;
+    if (
+        cacheKey !== replayPlatformPositionCacheKey ||
+        timeMs < replayPlatformPositionCacheTime - 1 ||
+        Math.abs(timeMs - replayPlatformPositionCacheTime) > 1000
+    ) {
+        replayPlatformPositionCache = new Map();
+        replayPlatformPositionCacheKey = cacheKey;
+    }
+    replayPlatformPositionCacheTime = timeMs;
+}
+
+function getReplayPlatformPosition(platform, timeMs, sample = null, positionCache = null) {
     const snapshot = sample?.platformSnapshots?.find(item => item.id === platform.id);
     if (snapshot) {
-        return { x: snapshot.x, y: snapshot.y, replayHeight: platform.height };
+        const position = { x: snapshot.x, y: snapshot.y, replayHeight: platform.height };
+        positionCache?.set(platform.id, { ...position, time: timeMs });
+        return position;
+    }
+
+    const cached = positionCache?.get(platform.id);
+    if (platform.movement && cached && Math.abs(timeMs - cached.time) <= REPLAY_PLATFORM_CACHE_MAX_AGE_MS) {
+        return { x: cached.x, y: cached.y, replayHeight: cached.replayHeight };
     }
 
     let x = platform.x;
@@ -1110,6 +1146,7 @@ function drawReplay() {
     if (!viewer || !sample || !replay) return;
 
     const view = getReplayView(replay);
+    syncReplayPlatformPositionCache(viewer);
     drawReplayLetterbox(view);
 
     const sourceWidth = view.sourceWidth;
@@ -1136,7 +1173,7 @@ function drawReplay() {
         if (replayPlatform.time > viewer.time + 200) return;
         if (isReplayPlatformTooOld(replayPlatform, sample, viewer.time)) return;
 
-        const moved = getReplayPlatformPosition(replayPlatform, viewer.time, sample);
+        const moved = getReplayPlatformPosition(replayPlatform, viewer.time, sample, replayPlatformPositionCache);
         const platformY = Number.isFinite(moved.y)
             ? view.y + moved.y * scaleY
             : playerY + playerDrawHeight + (sample.height - moved.replayHeight) * 10 * scaleY - cameraDrop;

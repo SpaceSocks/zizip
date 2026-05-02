@@ -5,7 +5,7 @@
         PLATFORM_BASE_WIDTH, PLATFORM_HEIGHT, PLATFORM_MIDDLE_THRESHOLD,
         MOVING_PLATFORM_SPEED,
         PLATFORM_FLASH_INTERVAL_MAX
-    } from './constants.js?v=mobile-portrait-54';
+    } from './constants.js?v=mobile-portrait-55';
 
     // --- Player Definition ---
     export const player = {

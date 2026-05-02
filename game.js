@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-54';
-import * as graphics from './graphics.js?v=mobile-portrait-54';
-import * as input from './input.js?v=mobile-portrait-54';
-import * as audio from './audio.js?v=mobile-portrait-54';
-import { player, createPlatform } from './entities.js?v=mobile-portrait-54';
-import * as ui from './ui.js?v=mobile-portrait-54'; // Import UI
+import * as state from './state.js?v=mobile-portrait-55';
+import * as graphics from './graphics.js?v=mobile-portrait-55';
+import * as input from './input.js?v=mobile-portrait-55';
+import * as audio from './audio.js?v=mobile-portrait-55';
+import { player, createPlatform } from './entities.js?v=mobile-portrait-55';
+import * as ui from './ui.js?v=mobile-portrait-55'; // Import UI
 import {
     MIN_VERT_GAP, MAX_VERT_GAP, PLATFORM_START_WIDTH, PLATFORM_EARLY_MIN_WIDTH, PLATFORM_MIN_WIDTH,
     PLATFORM_WIDTH_DIFFICULTY_HEIGHT, PLAYER_GRAVITY, PLAYER_JUMP_POWER, PLAYER_SPEED,
@@ -12,7 +12,7 @@ import {
     PLATFORM_PROBABILITY, PLATFORM_MIDDLE_THRESHOLD,
     PLATFORM_FLASH_DURATION, PLATFORM_FLASH_INTERVAL_MAX, PLATFORM_FLASH_INTERVAL_MIN,
     PLATFORM_FLASH_START_DELAY, PLAYER_AIR_CONTROL_FACTOR
-} from './constants.js?v=mobile-portrait-54';
+} from './constants.js?v=mobile-portrait-55';
 
 // --- Game Variables ---
 let animationFrameId = null;
@@ -31,6 +31,7 @@ const STARTING_PLATFORM_BOTTOM_OFFSET = 115;
 const RESPAWN_PLATFORM_BOTTOM_OFFSET = 150;
 const SPAWN_PADDING = 50;
 const MAX_SPAWN_ATTEMPTS = 24;
+const MAX_REPLAY_PLATFORM_SNAPSHOTS = 16;
 
 function isMobilePlayfield() {
     return graphics.canvas.width <= 720 || window.matchMedia?.('(pointer: coarse)').matches;
@@ -66,9 +67,19 @@ function recordCurrentReplaySample(force = false, timeOverride = null) {
     const groundedPlatform = player.groundedOnPlatform || null;
     const replayTime = typeof timeOverride === 'number' ? timeOverride : state.getElapsedTime();
     const animationState = getPlayerAnimationState();
+    const playerCenterY = player.y + player.height / 2;
     const platformSnapshots = state.getPlatforms()
-        .filter(platform => platform.movement)
-        .slice(0, 8)
+        .filter(platform => platform.movement && !platform.remove)
+        .sort((a, b) => {
+            const aGrounded = groundedPlatform?.id === a.id ? -100000 : 0;
+            const bGrounded = groundedPlatform?.id === b.id ? -100000 : 0;
+            const aVisible = a.y > -120 && a.y < graphics.canvas.height + 140 ? -50000 : 0;
+            const bVisible = b.y > -120 && b.y < graphics.canvas.height + 140 ? -50000 : 0;
+            const aDistance = Math.abs((a.y + a.height / 2) - playerCenterY);
+            const bDistance = Math.abs((b.y + b.height / 2) - playerCenterY);
+            return (aGrounded + aVisible + aDistance) - (bGrounded + bVisible + bDistance);
+        })
+        .slice(0, MAX_REPLAY_PLATFORM_SNAPSHOTS)
         .map(platform => ({
             id: platform.id,
             x: platform.x,
