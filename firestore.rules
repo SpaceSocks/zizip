@@ -6,6 +6,63 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function leaderboardWriter() {
+      return signedIn()
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    function validReplayShape() {
+      return request.resource.data.replay == null
+        || (
+          request.resource.data.replay is map
+          && request.resource.data.replay.keys().hasOnly([
+            'version',
+            'savedAt',
+            'score',
+            'maxHeight',
+            'time',
+            'duration',
+            'canvasWidth',
+            'canvasHeight',
+            'isMobileRun',
+            'viewportProfile',
+            'aspectRatio',
+            'platforms',
+            'samples',
+            'events'
+          ])
+          && request.resource.data.replay.version == 5
+          && request.resource.data.replay.savedAt is number
+          && request.resource.data.replay.score is number
+          && request.resource.data.replay.score == request.resource.data.score
+          && request.resource.data.replay.score >= 0
+          && request.resource.data.replay.score <= 10000000
+          && request.resource.data.replay.maxHeight is number
+          && request.resource.data.replay.maxHeight == request.resource.data.maxHeight
+          && request.resource.data.replay.maxHeight >= 0
+          && request.resource.data.replay.maxHeight <= 100000
+          && request.resource.data.replay.time is string
+          && request.resource.data.replay.time == request.resource.data.time
+          && request.resource.data.replay.time.size() <= 24
+          && request.resource.data.replay.duration is number
+          && request.resource.data.replay.duration >= 0
+          && request.resource.data.replay.duration <= 3600000
+          && request.resource.data.replay.canvasWidth is number
+          && request.resource.data.replay.canvasHeight is number
+          && request.resource.data.replay.isMobileRun is bool
+          && request.resource.data.replay.viewportProfile is string
+          && request.resource.data.replay.viewportProfile.size() <= 16
+          && request.resource.data.replay.aspectRatio is number
+          && request.resource.data.replay.platforms is list
+          && request.resource.data.replay.platforms.size() <= 1200
+          && request.resource.data.replay.samples is list
+          && request.resource.data.replay.samples.size() >= 5
+          && request.resource.data.replay.samples.size() <= 4800
+          && request.resource.data.replay.events is list
+          && request.resource.data.replay.events.size() <= 500
+        );
+    }
+
     function validLeaderboardShape() {
       return request.resource.data.keys().hasOnly([
           'userId',
@@ -23,23 +80,24 @@ service cloud.firestore {
         && request.resource.data.displayName.size() <= 24
         && request.resource.data.score is number
         && request.resource.data.score >= 0
-        && request.resource.data.score <= 1000000000
+        && request.resource.data.score <= 10000000
         && request.resource.data.maxHeight is number
         && request.resource.data.maxHeight >= 0
-        && request.resource.data.maxHeight <= 10000000
+        && request.resource.data.maxHeight <= 100000
         && request.resource.data.time is string
         && request.resource.data.time.size() <= 24
-        && request.resource.data.updatedAt == request.time;
+        && request.resource.data.updatedAt == request.time
+        && validReplayShape();
     }
 
     match /leaderboard/{entryId} {
       allow read: if true;
 
-      allow create: if signedIn()
+      allow create: if leaderboardWriter()
         && validLeaderboardShape()
         && request.resource.data.timestamp == request.time;
 
-      allow update: if signedIn()
+      allow update: if leaderboardWriter()
         && resource.data.userId == request.auth.uid
         && request.resource.data.userId == resource.data.userId
         && request.resource.data.timestamp == resource.data.timestamp

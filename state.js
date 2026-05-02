@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-29';
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-29';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-46';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-46';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({
@@ -57,7 +57,14 @@ const BEST_RUN_REPLAY_KEY = 'zipzip_bestRunReplay';
 const GHOST_ENABLED_KEY = 'zipzip_bestRunGhostEnabled';
 const REPLAY_SAMPLE_INTERVAL_MS = 33;
 const MAX_REPLAY_SAMPLES = 9000;
-let bestRunReplay = readBestRunReplay();
+const MAX_STORED_REPLAY_SAMPLES = 4800;
+const MAX_STORED_REPLAY_PLATFORMS = 1200;
+const MAX_STORED_REPLAY_EVENTS = 500;
+const MAX_REPLAY_READ_SAMPLES = 9000;
+const MAX_REPLAY_READ_PLATFORMS = 1500;
+const MAX_REPLAY_READ_EVENTS = 750;
+let bestRunReplay = null;
+let bestRunReplayOwnerId = null;
 let currentRunReplay = null;
 let lastReplaySampleTime = 0;
 let ghostEnabled = localStorage.getItem(GHOST_ENABLED_KEY) !== 'false';
@@ -90,16 +97,83 @@ function clampReplayRatio(value, fallback = 0.4) {
     return Math.max(-3, Math.min(4, value));
 }
 
-function readBestRunReplay() {
+function finiteReplayNumber(value, fallback = 0, min = -Infinity, max = Infinity) {
+    const numberValue = Number(value);
+    if (!Number.isFinite(numberValue)) return fallback;
+    return Math.max(min, Math.min(max, numberValue));
+}
+
+function finiteReplayInteger(value, fallback = 0, min = -Infinity, max = Infinity) {
+    return Math.round(finiteReplayNumber(value, fallback, min, max));
+}
+
+function firstDefined(...values) {
+    return values.find(value => value !== null && value !== undefined);
+}
+
+function sanitizeReplayAnimationState(value) {
+    const animationState = String(value || 'idle').toLowerCase();
+    return ['idle', 'walk', 'jump', 'fall'].includes(animationState) ? animationState : 'idle';
+}
+
+function sanitizeStorageKeyPart(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 96);
+}
+
+function getBestRunReplayOwnerId() {
+    if (activeLeaderboardSource === 'local') {
+        return getLocalLeaderboardUserId(displayName);
+    }
+
+    if (userId && userId !== 'local-player') {
+        return `global-${userId}`;
+    }
+
+    return null;
+}
+
+function getBestRunReplayStorageKey(ownerId = getBestRunReplayOwnerId()) {
+    const safeOwnerId = sanitizeStorageKeyPart(ownerId);
+    return safeOwnerId ? `${BEST_RUN_REPLAY_KEY}:${safeOwnerId}` : null;
+}
+
+function readBestRunReplay(ownerId = getBestRunReplayOwnerId()) {
+    const storageKey = getBestRunReplayStorageKey(ownerId);
+    if (!storageKey) return null;
+
     try {
-        const replay = JSON.parse(localStorage.getItem(BEST_RUN_REPLAY_KEY) || 'null');
-        if (!replay || !Array.isArray(replay.samples)) return null;
+        const replay = JSON.parse(localStorage.getItem(storageKey) || 'null');
+        if (!hasReplayData(replay)) return null;
+        if (replay.ownerId && replay.ownerId !== ownerId) {
+            localStorage.removeItem(storageKey);
+            return null;
+        }
         return replay;
     } catch (error) {
         console.warn("Could not read best-run ghost data. Resetting it.", error);
-        localStorage.removeItem(BEST_RUN_REPLAY_KEY);
+        localStorage.removeItem(storageKey);
         return null;
     }
+}
+
+function loadBestRunReplayForCurrentPlayer() {
+    const ownerId = getBestRunReplayOwnerId();
+    bestRunReplayOwnerId = ownerId;
+    bestRunReplay = ownerId ? readBestRunReplay(ownerId) : null;
+    return bestRunReplay;
+}
+
+function getCurrentPlayerBestRunReplay() {
+    const ownerId = getBestRunReplayOwnerId();
+    if (ownerId !== bestRunReplayOwnerId) {
+        return loadBestRunReplayForCurrentPlayer();
+    }
+    return bestRunReplay;
 }
 
 // --- State Accessors/Mutators ---
@@ -217,6 +291,7 @@ export const isLocalPlayer = () => userId === 'local-player';
 export const getActiveLeaderboardSource = () => activeLeaderboardSource;
 export function setActiveLeaderboardSource(source) {
     activeLeaderboardSource = source === 'global' ? 'global' : 'local';
+    loadBestRunReplayForCurrentPlayer();
 }
 
 // Add back lives getter/setter
@@ -319,11 +394,20 @@ export function recordRunReplaySample(sample) {
         xRatio: Math.max(0, Math.min(1, sample.xRatio)),
         yRatio: clampReplayRatio(sample.yRatio, 0.4),
         facing: sample.facing < 0 ? -1 : 1,
+        animationState: sanitizeReplayAnimationState(sample.animationState),
+        animationFrame: finiteReplayInteger(sample.animationFrame, 0, 0, 6),
         cameraDrop: Math.round((sample.cameraDrop || 0) * 10) / 10,
         groundedPlatformId: Number.isFinite(sample.groundedPlatformId) ? sample.groundedPlatformId : null,
         groundedOffsetRatio: Number.isFinite(sample.groundedOffsetRatio)
             ? Math.max(-1, Math.min(2, Math.round(sample.groundedOffsetRatio * 1000) / 1000))
             : null,
+        platformSnapshots: Array.isArray(sample.platformSnapshots)
+            ? sample.platformSnapshots.slice(0, 8).map(snapshot => ({
+                id: finiteReplayInteger(snapshot.id, -1, -1, 1000000),
+                x: Math.round(finiteReplayNumber(snapshot.x, 0, -5000, 5000) * 10) / 10,
+                y: Math.round(finiteReplayNumber(snapshot.y, 0, -5000, 15000) * 10) / 10
+            })).filter(snapshot => snapshot.id >= 0)
+            : [],
         visible: sample.visible !== false
     });
 
@@ -367,26 +451,37 @@ function isReplayScoreBetter(replay, previousScore = 0, previousHeight = 0) {
 }
 
 export function maybeSaveBestRunReplay(finalScore, finalHeight, finalTime) {
+    const ownerId = getBestRunReplayOwnerId();
+    if (!ownerId) return false;
+
     const replay = buildCurrentRunReplay(finalScore, finalHeight, finalTime);
     if (!replay) return false;
-    const previousBestHeight = bestRunReplay?.maxHeight || 0;
-    const previousBestScore = bestRunReplay?.score || 0;
+    const previousReplay = getCurrentPlayerBestRunReplay();
+    const previousBestHeight = previousReplay?.maxHeight || 0;
+    const previousBestScore = previousReplay?.score || 0;
 
     if (!isReplayScoreBetter(replay, previousBestScore, previousBestHeight)) return false;
 
-    bestRunReplay = replay;
-    localStorage.setItem(BEST_RUN_REPLAY_KEY, JSON.stringify(bestRunReplay));
+    bestRunReplayOwnerId = ownerId;
+    bestRunReplay = {
+        ...replay,
+        ownerId,
+        ownerName: displayName || 'Anon',
+        leaderboardSource: activeLeaderboardSource
+    };
+    localStorage.setItem(getBestRunReplayStorageKey(ownerId), JSON.stringify(bestRunReplay));
     return true;
 }
 
 export function getBestRunReplay() {
-    return bestRunReplay;
+    return getCurrentPlayerBestRunReplay();
 }
 
 export function getBestRunGhostPoint(timeMs) {
-    if (!bestRunReplay || !Array.isArray(bestRunReplay.samples) || bestRunReplay.samples.length === 0) return null;
+    const replay = getCurrentPlayerBestRunReplay();
+    const samples = getReplaySamples(replay);
+    if (samples.length === 0) return null;
 
-    const samples = bestRunReplay.samples;
     if (timeMs <= samples[0].time) return samples[0];
     if (timeMs >= samples[samples.length - 1].time) return samples[samples.length - 1];
 
@@ -410,29 +505,85 @@ export function getBestRunGhostPoint(timeMs) {
     };
 }
 
+function normalizeReplayCollection(value, maxItems) {
+    if (Array.isArray(value)) {
+        return value.length <= maxItems ? value : [];
+    }
+    if (!value || typeof value !== 'object') return [];
+
+    const entries = Object.entries(value);
+    if (entries.length > maxItems) return [];
+
+    return entries
+        .sort(([a], [b]) => {
+            const numberA = Number(a);
+            const numberB = Number(b);
+            if (Number.isFinite(numberA) && Number.isFinite(numberB)) return numberA - numberB;
+            return String(a).localeCompare(String(b));
+        })
+        .map(([, item]) => item)
+        .filter(item => item !== null && item !== undefined);
+}
+
 function getReplaySamples(replay) {
-    if (!Array.isArray(replay?.samples)) return [];
-    return replay.samples.map(sample => Array.isArray(sample) ? {
-        time: sample[0],
-        height: sample[1],
-        xRatio: sample[2],
-        yRatio: sample[3],
-        facing: sample[4] < 0 ? -1 : 1,
-        visible: sample[5] !== 0,
-        cameraDrop: sample[6] || 0,
-        groundedPlatformId: sample[7] >= 0 ? sample[7] : null,
-        groundedOffsetRatio: null
-    } : {
-        time: sample.time ?? sample.t ?? 0,
-        height: sample.height ?? sample.h ?? 0,
-        xRatio: sample.xRatio ?? sample.x ?? 0.5,
-        yRatio: sample.yRatio ?? sample.y ?? 0.4,
-        facing: (sample.facing ?? sample.f ?? 1) < 0 ? -1 : 1,
-        visible: sample.visible ?? sample.v !== 0,
-        cameraDrop: sample.cameraDrop ?? sample.c ?? 0,
-        groundedPlatformId: sample.groundedPlatformId ?? sample.g ?? null,
-        groundedOffsetRatio: sample.groundedOffsetRatio ?? sample.o ?? null
-    });
+    const rawSamples = normalizeReplayCollection(replay?.samples, MAX_REPLAY_READ_SAMPLES);
+    if (rawSamples.length === 0) return [];
+
+    return rawSamples.map(sample => {
+        if (Array.isArray(sample)) {
+            return {
+                time: finiteReplayInteger(sample[0], 0, 0, 3600000),
+                height: finiteReplayNumber(sample[1], 0, 0, 100000),
+                xRatio: finiteReplayNumber(sample[2], 0.5, -1, 2),
+                yRatio: finiteReplayNumber(sample[3], 0.4, -3, 4),
+                facing: sample[4] < 0 ? -1 : 1,
+                animationState: 'idle',
+                animationFrame: 0,
+                visible: sample[5] !== 0,
+                cameraDrop: finiteReplayNumber(sample[6], 0, -100000, 100000),
+                groundedPlatformId: sample[7] >= 0 ? sample[7] : null,
+                groundedOffsetRatio: null,
+                platformSnapshots: []
+            };
+        }
+
+        const visibleValue = firstDefined(sample.visible, sample.v);
+        const groundedOffset = firstDefined(sample.groundedOffsetRatio, sample.o);
+        const rawPlatformSnapshots = normalizeReplayCollection(firstDefined(sample.platformSnapshots, sample.p), 16);
+        return {
+            time: finiteReplayInteger(firstDefined(sample.time, sample.t), 0, 0, 3600000),
+            height: finiteReplayNumber(firstDefined(sample.height, sample.h), 0, 0, 100000),
+            xRatio: finiteReplayNumber(firstDefined(sample.xRatio, sample.x), 0.5, -1, 2),
+            yRatio: finiteReplayNumber(firstDefined(sample.yRatio, sample.y), 0.4, -3, 4),
+            facing: firstDefined(sample.facing, sample.f, 1) < 0 ? -1 : 1,
+            animationState: sanitizeReplayAnimationState(firstDefined(sample.animationState, sample.z)),
+            animationFrame: finiteReplayInteger(firstDefined(sample.animationFrame, sample.r), 0, 0, 6),
+            visible: visibleValue === undefined ? true : visibleValue !== 0 && visibleValue !== false,
+            cameraDrop: finiteReplayNumber(firstDefined(sample.cameraDrop, sample.c), 0, -100000, 100000),
+            groundedPlatformId: firstDefined(sample.groundedPlatformId, sample.g, null),
+            groundedOffsetRatio: Number.isFinite(Number(groundedOffset))
+                ? finiteReplayNumber(groundedOffset, 0, -1, 2)
+                : null,
+            platformSnapshots: rawPlatformSnapshots.map(snapshot => {
+                if (Array.isArray(snapshot)) {
+                    return {
+                        id: finiteReplayInteger(snapshot[0], -1, -1, 1000000),
+                        x: finiteReplayNumber(snapshot[1], 0, -5000, 5000),
+                        y: finiteReplayNumber(snapshot[2], 0, -5000, 15000)
+                    };
+                }
+                return {
+                    id: finiteReplayInteger(firstDefined(snapshot.id, snapshot.i), -1, -1, 1000000),
+                    x: finiteReplayNumber(firstDefined(snapshot.x, snapshot.sx), 0, -5000, 5000),
+                    y: finiteReplayNumber(firstDefined(snapshot.y, snapshot.sy), 0, -5000, 15000)
+                };
+            }).filter(snapshot => snapshot.id >= 0)
+        };
+    }).filter(sample => Number.isFinite(sample.time) && Number.isFinite(sample.height));
+}
+
+export function hasReplayData(replay) {
+    return getReplaySamples(replay).length > 0;
 }
 
 function pickDiscreteReplayValue(a, b, timeMs, key, fallback = null, edgeMs = 24) {
@@ -444,63 +595,131 @@ function pickDiscreteReplayValue(a, b, timeMs, key, fallback = null, edgeMs = 24
     return fallback;
 }
 
-export function getReplayPlatforms(replay) {
-    if (!Array.isArray(replay?.platforms)) return [];
-    return replay.platforms.map(platform => Array.isArray(platform) ? {
-        id: platform[0],
-        type: platform[1],
-        x: platform[2],
-        width: platform[3],
-        height: platform[4],
-        time: platform[5],
-        movement: platform[6] || null
-    } : {
-        id: platform.id ?? platform.i,
-        type: platform.type ?? platform.p ?? 'normal',
-        x: platform.x ?? 0,
-        width: platform.width ?? platform.w ?? 0,
-        height: platform.height ?? platform.h ?? 0,
-        time: platform.time ?? platform.t ?? 0,
-        movement: platform.movement ?? platform.m ?? null
+function interpolateReplayPlatformSnapshots(a = {}, b = {}, t = 0, timeMs = 0) {
+    const snapshotsById = new Map();
+    (a.platformSnapshots || []).forEach(snapshot => {
+        snapshotsById.set(snapshot.id, { a: snapshot, b: null });
     });
+    (b.platformSnapshots || []).forEach(snapshot => {
+        const existing = snapshotsById.get(snapshot.id) || { a: null, b: null };
+        existing.b = snapshot;
+        snapshotsById.set(snapshot.id, existing);
+    });
+
+    return Array.from(snapshotsById.values()).map(pair => {
+        if (pair.a && pair.b) {
+            return {
+                id: pair.a.id,
+                x: pair.a.x + (pair.b.x - pair.a.x) * t,
+                y: pair.a.y + (pair.b.y - pair.a.y) * t
+            };
+        }
+        const fallbackSnapshot = timeMs - (a.time || 0) < (b.time || 0) - timeMs ? pair.a : pair.b;
+        return fallbackSnapshot ? { ...fallbackSnapshot } : null;
+    }).filter(Boolean);
+}
+
+function sanitizeReplayMovement(movement) {
+    if (!movement || typeof movement !== 'object') return null;
+    const axis = movement.axis === 'y' ? 'y' : 'x';
+    const direction = finiteReplayNumber(movement.direction, 1, -1, 1) < 0 ? -1 : 1;
+    const speed = finiteReplayNumber(movement.speed, 0, 0, 500);
+    const range = finiteReplayNumber(movement.range, 0, 0, 1000);
+    if (speed <= 0 || range <= 0) return null;
+    return { axis, direction, speed, range };
+}
+
+export function getReplayPlatforms(replay) {
+    const rawPlatforms = normalizeReplayCollection(replay?.platforms, MAX_REPLAY_READ_PLATFORMS);
+    if (rawPlatforms.length === 0) return [];
+
+    return rawPlatforms.map(platform => {
+        if (Array.isArray(platform)) {
+            return {
+                id: finiteReplayInteger(platform[0], 0, 0, 1000000),
+                type: String(platform[1] || 'normal').slice(0, 24),
+                x: finiteReplayNumber(platform[2], 0, -5000, 5000),
+                width: finiteReplayNumber(platform[3], 0, 0, 2000),
+                height: finiteReplayNumber(platform[4], 0, 0, 100000),
+                time: finiteReplayInteger(platform[5], 0, 0, 3600000),
+                movement: sanitizeReplayMovement(platform[6])
+            };
+        }
+
+        return {
+            id: finiteReplayInteger(firstDefined(platform.id, platform.i), 0, 0, 1000000),
+            type: String(firstDefined(platform.type, platform.p, 'normal')).slice(0, 24),
+            x: finiteReplayNumber(platform.x, 0, -5000, 5000),
+            width: finiteReplayNumber(firstDefined(platform.width, platform.w), 0, 0, 2000),
+            height: finiteReplayNumber(firstDefined(platform.height, platform.h), 0, 0, 100000),
+            time: finiteReplayInteger(firstDefined(platform.time, platform.t), 0, 0, 3600000),
+            movement: sanitizeReplayMovement(firstDefined(platform.movement, platform.m))
+        };
+    }).filter(platform => platform.width > 0);
+}
+
+function getReplayEvents(replay) {
+    return normalizeReplayCollection(replay?.events, MAX_REPLAY_READ_EVENTS).map(event => {
+        const safeEvent = event && typeof event === 'object' ? event : {};
+        return {
+            ...safeEvent,
+            time: finiteReplayInteger(firstDefined(safeEvent.time, safeEvent.t), 0, 0, 3600000),
+            type: String(firstDefined(safeEvent.type, safeEvent.e, safeEvent.name, '')).slice(0, 40)
+        };
+    }).filter(event => event.type);
 }
 
 function compactReplayForStorage(replay) {
     if (!replay) return null;
     const samples = getReplaySamples(replay);
-    const maxSamples = 4800;
+    const maxSamples = MAX_STORED_REPLAY_SAMPLES;
     const stride = Math.max(1, Math.ceil(samples.length / maxSamples));
     const compactSamples = samples
         .filter((_, index) => index === 0 || index === samples.length - 1 || index % stride === 0)
-        .map(sample => ({
-            t: Math.round(sample.time || 0),
-            h: Math.round((sample.height || 0) * 10) / 10,
-            x: Math.round((sample.xRatio || 0) * 10000) / 10000,
-            y: Math.round((sample.yRatio ?? 0.4) * 10000) / 10000,
-            f: sample.facing < 0 ? -1 : 1,
-            v: sample.visible === false ? 0 : 1,
-            c: Math.round((sample.cameraDrop || 0) * 10) / 10,
-            g: Number.isFinite(sample.groundedPlatformId) ? sample.groundedPlatformId : -1,
-            o: Number.isFinite(sample.groundedOffsetRatio)
-                ? Math.max(-1, Math.min(2, Math.round(sample.groundedOffsetRatio * 1000) / 1000))
-                : null
-        }));
+        .map(sample => {
+            const compactSample = {
+                t: Math.round(sample.time || 0),
+                h: Math.round((sample.height || 0) * 10) / 10,
+                x: Math.round((sample.xRatio || 0) * 10000) / 10000,
+                y: Math.round((sample.yRatio ?? 0.4) * 10000) / 10000,
+                f: sample.facing < 0 ? -1 : 1,
+                z: sanitizeReplayAnimationState(sample.animationState),
+                r: finiteReplayInteger(sample.animationFrame, 0, 0, 6),
+                v: sample.visible === false ? 0 : 1,
+                c: Math.round((sample.cameraDrop || 0) * 10) / 10,
+                g: Number.isFinite(sample.groundedPlatformId) ? sample.groundedPlatformId : -1,
+                o: Number.isFinite(sample.groundedOffsetRatio)
+                    ? Math.max(-1, Math.min(2, Math.round(sample.groundedOffsetRatio * 1000) / 1000))
+                    : null
+            };
+            const platformSnapshots = Array.isArray(sample.platformSnapshots)
+                ? sample.platformSnapshots.slice(0, 8).map(snapshot => [
+                    finiteReplayInteger(snapshot.id, -1, -1, 1000000),
+                    Math.round(finiteReplayNumber(snapshot.x, 0, -5000, 5000) * 10) / 10,
+                    Math.round(finiteReplayNumber(snapshot.y, 0, -5000, 15000) * 10) / 10
+                ]).filter(snapshot => snapshot[0] >= 0)
+                : [];
+            if (platformSnapshots.length > 0) {
+                compactSample.p = platformSnapshots;
+            }
+            return compactSample;
+        });
 
     return {
         version: 5,
-        savedAt: replay.savedAt,
-        score: replay.score,
-        maxHeight: replay.maxHeight,
-        time: replay.time,
-        duration: replay.duration,
-        canvasWidth: replay.canvasWidth,
-        canvasHeight: replay.canvasHeight,
+        savedAt: finiteReplayInteger(replay.savedAt, Date.now(), 0, Number.MAX_SAFE_INTEGER),
+        score: finiteReplayInteger(replay.score, 0, 0, 10000000),
+        maxHeight: Math.round(finiteReplayNumber(replay.maxHeight, 0, 0, 100000) * 10) / 10,
+        time: String(replay.time || '00:00').slice(0, 24),
+        duration: finiteReplayInteger(replay.duration, 0, 0, 3600000),
+        canvasWidth: finiteReplayInteger(replay.canvasWidth, 0, 0, 10000),
+        canvasHeight: finiteReplayInteger(replay.canvasHeight, 0, 0, 10000),
         isMobileRun: replay.isMobileRun === true || replay.viewportProfile === 'mobile',
-        viewportProfile: replay.viewportProfile || (replay.isMobileRun ? 'mobile' : 'desktop'),
-        aspectRatio: replay.aspectRatio || (replay.canvasWidth && replay.canvasHeight
+        viewportProfile: String(replay.viewportProfile || (replay.isMobileRun ? 'mobile' : 'desktop')).slice(0, 16),
+        aspectRatio: finiteReplayNumber(replay.aspectRatio || (replay.canvasWidth && replay.canvasHeight
             ? Math.round((replay.canvasWidth / replay.canvasHeight) * 10000) / 10000
-            : 0),
-        platforms: getReplayPlatforms(replay).map(platform => ({
+            : 0), 0, 0, 10),
+        platforms: getReplayPlatforms(replay).slice(0, MAX_STORED_REPLAY_PLATFORMS).map(platform => ({
             i: platform.id,
             p: platform.type || 'normal',
             x: Math.round(platform.x || 0),
@@ -510,7 +729,7 @@ function compactReplayForStorage(replay) {
             m: platform.movement || null
         })),
         samples: compactSamples,
-        events: Array.isArray(replay.events) ? replay.events : []
+        events: getReplayEvents(replay).slice(0, MAX_STORED_REPLAY_EVENTS)
     };
 }
 
@@ -543,9 +762,8 @@ export function getReplayDuration() {
     if (!replayViewer) return 0;
     const samples = getReplaySamples(replayViewer.replay);
     const sampleDuration = samples[samples.length - 1]?.time || 0;
-    const eventDuration = Array.isArray(replayViewer.replay.events)
-        ? replayViewer.replay.events.reduce((max, event) => Math.max(max, event.time || 0), 0)
-        : 0;
+    const eventDuration = getReplayEvents(replayViewer.replay)
+        .reduce((max, event) => Math.max(max, event.time || 0), 0);
     return Math.max(replayViewer.replay.duration || 0, sampleDuration, eventDuration);
 }
 
@@ -609,9 +827,11 @@ export function getReplaySampleAt(timeMs) {
     const b = samples[high];
     const span = Math.max(1, b.time - a.time);
     const t = (timeMs - a.time) / span;
-    const groundedPlatformId = pickDiscreteReplayValue(a, b, timeMs, 'groundedPlatformId', null);
+    const groundedPlatformId = pickDiscreteReplayValue(a, b, timeMs, 'groundedPlatformId', null, 4);
     const visible = pickDiscreteReplayValue(a, b, timeMs, 'visible', true, 36) !== false;
     const facing = pickDiscreteReplayValue(a, b, timeMs, 'facing', 1, 36) < 0 ? -1 : 1;
+    const animationState = pickDiscreteReplayValue(a, b, timeMs, 'animationState', 'idle', 36);
+    const animationFrame = pickDiscreteReplayValue(a, b, timeMs, 'animationFrame', 0, 36);
     return {
         time: timeMs,
         height: a.height + (b.height - a.height) * t,
@@ -621,19 +841,27 @@ export function getReplaySampleAt(timeMs) {
         groundedPlatformId,
         groundedOffsetRatio: groundedPlatformId === null
             ? null
-            : pickDiscreteReplayValue(a, b, timeMs, 'groundedOffsetRatio', null),
+            : pickDiscreteReplayValue(a, b, timeMs, 'groundedOffsetRatio', null, 4),
+        platformSnapshots: interpolateReplayPlatformSnapshots(a, b, t, timeMs),
         visible,
-        facing
+        facing,
+        animationState,
+        animationFrame
     };
 }
 
+export function getReplayEventsForCurrentViewer() {
+    if (!replayViewer) return [];
+    return getReplayEvents(replayViewer.replay);
+}
+
 export function consumeReplayEvents() {
-    if (!replayViewer || !Array.isArray(replayViewer.replay.events)) return [];
+    if (!replayViewer) return [];
 
     const start = Math.min(replayViewer.previousTime ?? replayViewer.time, replayViewer.time);
     const end = Math.max(replayViewer.previousTime ?? replayViewer.time, replayViewer.time);
     const events = [];
-    replayViewer.replay.events.forEach((event, index) => {
+    getReplayEvents(replayViewer.replay).forEach((event, index) => {
         const id = `${index}:${event.type}:${event.time}`;
         if (replayViewer.playedEvents.has(id)) return;
         if (event.time >= start && event.time <= end) {
@@ -658,9 +886,13 @@ export function setGhostEnabled(enabled) {
 const LEADERBOARD_COLLECTION = 'leaderboard'; // Name of Firestore collection
 const LOCAL_LEADERBOARD_KEY = 'zipzip_localLeaderboard';
 const LOCAL_PLAYER_ID_KEY = 'zipzip_localPlayerId';
-const LEADERBOARD_RESET_VERSION = 'replay-leaderboard-reset-20260430';
+const LOCAL_ALIAS_KEY = 'zipzip_localAlias';
+const LEADERBOARD_RESET_VERSION = 'local-fresh-start-20260502';
 const LOCAL_LEADERBOARD_RESET_KEY = `zipzip_${LEADERBOARD_RESET_VERSION}_local`;
 const REMOTE_LEADERBOARD_RESET_KEY = `zipzip_${LEADERBOARD_RESET_VERSION}_remote`;
+const LEADERBOARD_DISPLAY_LIMIT = 100;
+const LOCAL_LEADERBOARD_STORE_LIMIT = 250;
+const GLOBAL_LEADERBOARD_FETCH_LIMIT = 160;
 let localLeaderboardCache = null; // Cache results locally
 let lastFetchTime = 0;
 const CACHE_DURATION = 60 * 1000; // Cache for 60 seconds
@@ -771,7 +1003,7 @@ async function fetchGlobalLeaderboardViaRest(idToken = null) {
                     { field: { fieldPath: 'score' }, direction: 'DESCENDING' },
                     { field: { fieldPath: 'timestamp' }, direction: 'ASCENDING' }
                 ],
-                limit: 40
+                limit: GLOBAL_LEADERBOARD_FETCH_LIMIT
             }
         })
     });
@@ -824,6 +1056,51 @@ async function queryGlobalLeaderboardEntryForUserViaRest(idToken, leaderboardUse
             ...convertFirestoreFields(row.document.fields)
         }));
     return dedupeLeaderboardEntries(entries)[0] || null;
+}
+
+async function queryGlobalLeaderboardRankViaRest(idToken, entry) {
+    if (!entry || typeof entry.score !== 'number') return null;
+
+    const headers = {
+        'Content-Type': 'application/json'
+    };
+    if (idToken) {
+        headers.Authorization = `Bearer ${idToken}`;
+    }
+
+    const response = await fetch('https://firestore.googleapis.com/v1/projects/zipzip-d8d69/databases/(default)/documents:runAggregationQuery?key=AIzaSyBNl4-fwt3BoZ-ERO1JUOo8cFwrqndlU_k', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+            structuredAggregationQuery: {
+                structuredQuery: {
+                    from: [{ collectionId: LEADERBOARD_COLLECTION }],
+                    where: {
+                        fieldFilter: {
+                            field: { fieldPath: 'score' },
+                            op: 'GREATER_THAN',
+                            value: toFirestoreValue(entry.score)
+                        }
+                    }
+                },
+                aggregations: [
+                    {
+                        alias: 'betterCount',
+                        count: {}
+                    }
+                ]
+            }
+        })
+    });
+
+    if (!response.ok) {
+        throw makeLeaderboardError('global-rest-rank-failed', `Global leaderboard REST rank failed (${response.status}).`);
+    }
+
+    const rows = await response.json();
+    const countValue = rows?.[0]?.result?.aggregateFields?.betterCount;
+    const betterCount = Number(countValue?.integerValue || countValue?.doubleValue || 0);
+    return Number.isFinite(betterCount) ? betterCount + 1 : null;
 }
 
 async function submitGlobalLeaderboardViaRest(idToken, leaderboardUserId, entryData) {
@@ -907,20 +1184,43 @@ function getLocalLeaderboard() {
 }
 
 function saveLocalLeaderboard(entries) {
-    localStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(entries.slice(0, 10)));
+    localStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(entries.slice(0, LOCAL_LEADERBOARD_STORE_LIMIT)));
+}
+
+function removeLocalStorageKeysStartingWith(prefix) {
+    try {
+        for (let index = localStorage.length - 1; index >= 0; index--) {
+            const key = localStorage.key(index);
+            if (key && key.startsWith(prefix)) {
+                localStorage.removeItem(key);
+            }
+        }
+    } catch (error) {
+        console.warn(`Could not remove localStorage keys starting with ${prefix}.`, error);
+    }
 }
 
 export function clearLocalLeaderboardForFreshStart() {
     if (localStorage.getItem(LOCAL_LEADERBOARD_RESET_KEY) === 'done') return false;
 
     localStorage.removeItem(LOCAL_LEADERBOARD_KEY);
+    localStorage.removeItem(LOCAL_PLAYER_ID_KEY);
+    localStorage.removeItem(LOCAL_ALIAS_KEY);
+    localStorage.removeItem('topScore');
+    localStorage.removeItem('highestHeight');
     localStorage.removeItem(BEST_RUN_REPLAY_KEY);
+    removeLocalStorageKeysStartingWith(`${BEST_RUN_REPLAY_KEY}:`);
+    const currentBestRunKey = getBestRunReplayStorageKey();
+    if (currentBestRunKey) localStorage.removeItem(currentBestRunKey);
     localLeaderboardCache = null;
     lastFetchTime = Date.now();
     lastSubmittedScore = null;
     bestRunReplay = null;
+    bestRunReplayOwnerId = null;
+    topScore = 0;
+    highestHeight = 0;
     localStorage.setItem(LOCAL_LEADERBOARD_RESET_KEY, 'done');
-    console.log("Local leaderboard and old best-run replay cleared for replay update.");
+    console.log("Local leaderboard, local users, and local replays cleared for a fresh start.");
     return true;
 }
 
@@ -951,6 +1251,21 @@ function getLeaderboardUserId() {
     return localId;
 }
 
+function getLocalLeaderboardUserId(playerName = displayName) {
+    const normalizedName = String(playerName || 'Local Player')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 32);
+
+    if (normalizedName) {
+        return `local-alias-${normalizedName}`;
+    }
+
+    return getLeaderboardUserId();
+}
+
 function sortLeaderboardEntries(entries) {
     return [...entries].sort((a, b) => {
         if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
@@ -969,15 +1284,81 @@ function dedupeLeaderboardEntries(entries) {
     return sortLeaderboardEntries([...bestByUser.values()]);
 }
 
+function rankLeaderboardEntries(entries) {
+    return dedupeLeaderboardEntries(entries).map((entry, index) => ({
+        ...entry,
+        rank: entry.rank || index + 1
+    }));
+}
+
+function buildLeaderboardDisplayWindow(entries, currentUserId = null, currentEntry = null, currentRank = null) {
+    const rankedEntries = rankLeaderboardEntries(entries);
+    const topEntries = rankedEntries.slice(0, LEADERBOARD_DISPLAY_LIMIT);
+
+    if (currentUserId) {
+        const topCurrentEntry = topEntries.find(entry => entry.userId === currentUserId);
+        if (topCurrentEntry) {
+            topCurrentEntry.isCurrentPlayer = true;
+            return topEntries;
+        }
+
+        const rankedCurrentEntry = rankedEntries.find(entry => entry.userId === currentUserId);
+        const entryToAppend = rankedCurrentEntry || currentEntry;
+        if (entryToAppend) {
+            return [
+                ...topEntries,
+                {
+                    ...entryToAppend,
+                    rank: rankedCurrentEntry?.rank || currentRank || entryToAppend.rank || null,
+                    isCurrentPlayer: true,
+                    separated: topEntries.length > 0
+                }
+            ];
+        }
+    }
+
+    return topEntries;
+}
+
+async function getBestGlobalEntryForUserSdk(firestoreApi, leaderboardRef, leaderboardUserId) {
+    if (!leaderboardUserId) return null;
+
+    const userQuery = firestoreApi.query(
+        leaderboardRef,
+        firestoreApi.where('userId', '==', leaderboardUserId)
+    );
+    const userSnapshot = await firestoreApi.getDocs(userQuery);
+    const entries = [];
+    userSnapshot.forEach((doc) => {
+        entries.push({
+            id: doc.id,
+            ...doc.data()
+        });
+    });
+    return dedupeLeaderboardEntries(entries)[0] || null;
+}
+
+async function getGlobalLeaderboardRankSdk(firestoreApi, leaderboardRef, entry) {
+    if (!entry || typeof entry.score !== 'number' || !firestoreApi.getCountFromServer) return null;
+
+    const betterQuery = firestoreApi.query(
+        leaderboardRef,
+        firestoreApi.where('score', '>', entry.score)
+    );
+    const snapshot = await firestoreApi.getCountFromServer(betterQuery);
+    const betterCount = Number(snapshot.data().count || 0);
+    return Number.isFinite(betterCount) ? betterCount + 1 : null;
+}
+
 function addLocalLeaderboardEntry(playerName, score, maxHeight, time, replay = null) {
-    const leaderboardUserId = getLeaderboardUserId();
+    const leaderboardUserId = getLocalLeaderboardUserId(playerName);
     const existingEntries = getLocalLeaderboard();
     const existingForUser = existingEntries.find(entry => entry.userId === leaderboardUserId);
     const isBetter = !existingForUser || score > (existingForUser.score || 0) ||
         (score === (existingForUser.score || 0) && maxHeight > (existingForUser.maxHeight || 0)) ||
         (score === (existingForUser.score || 0) && maxHeight === (existingForUser.maxHeight || 0) && replay && !existingForUser.replay);
 
-    lastSubmittedScore = { score, maxHeight, time, userId: leaderboardUserId };
+    lastSubmittedScore = { score, maxHeight, time, userId: leaderboardUserId, displayName: playerName || 'Local Player' };
 
     if (!isBetter) {
         localLeaderboardCache = null;
@@ -999,14 +1380,14 @@ function addLocalLeaderboardEntry(playerName, score, maxHeight, time, replay = n
     };
 
     const withoutOldUserEntry = existingEntries.filter(existing => existing.userId !== leaderboardUserId);
-    const nextEntries = dedupeLeaderboardEntries([...withoutOldUserEntry, entry]).slice(0, 10);
+    const nextEntries = dedupeLeaderboardEntries([...withoutOldUserEntry, entry]);
     saveLocalLeaderboard(nextEntries);
     localLeaderboardCache = null;
     lastFetchTime = Date.now();
 }
 
 export async function getLocalLeaderboardEntries() {
-    return dedupeLeaderboardEntries(getLocalLeaderboard()).slice(0, 10);
+    return buildLeaderboardDisplayWindow(getLocalLeaderboard(), getLocalLeaderboardUserId(displayName));
 }
 
 export async function getGlobalLeaderboardEntries() {
@@ -1024,16 +1405,19 @@ export async function getGlobalLeaderboardEntries() {
             collection,
             getDocs,
             query,
+            where,
             orderBy,
-            limit
+            limit,
+            getCountFromServer
         } = await getFirestoreApi();
+        const firestoreApi = { getDocs, query, where, getCountFromServer };
         const leaderboardRef = collection(db, LEADERBOARD_COLLECTION);
-        // Query to get top 10 scores, ordered by score descending, then timestamp ascending
+        // Query enough rows to form the top 100 after de-duping by player.
         const q = query(
             leaderboardRef,
             orderBy('score', 'desc'), // Higher scores first
             orderBy('timestamp', 'asc'), // For ties, older scores rank higher
-            limit(40) // Fetch extra so one very active player does not crowd out everyone before de-dupe.
+            limit(GLOBAL_LEADERBOARD_FETCH_LIMIT)
         );
 
         const querySnapshot = await getDocs(q);
@@ -1045,11 +1429,23 @@ export async function getGlobalLeaderboardEntries() {
             });
         });
 
-        const dedupedLeaderboard = dedupeLeaderboardEntries(leaderboardData).slice(0, 10);
-        console.log("Leaderboard fetched successfully:", dedupedLeaderboard);
-        localLeaderboardCache = { source: 'global', entries: dedupedLeaderboard }; // Update cache
+        let currentEntry = null;
+        let currentRank = null;
+        const currentUserId = userId && userId !== 'local-player' ? userId : null;
+        if (currentUserId) {
+            try {
+                currentEntry = await getBestGlobalEntryForUserSdk(firestoreApi, leaderboardRef, currentUserId);
+                currentRank = await getGlobalLeaderboardRankSdk(firestoreApi, leaderboardRef, currentEntry);
+            } catch (rankError) {
+                console.warn("Could not fetch current player's global rank.", rankError);
+            }
+        }
+
+        const leaderboardWindow = buildLeaderboardDisplayWindow(leaderboardData, currentUserId, currentEntry, currentRank);
+        console.log("Leaderboard fetched successfully:", leaderboardWindow);
+        localLeaderboardCache = { source: 'global', entries: leaderboardWindow }; // Update cache
         lastFetchTime = now; // Update fetch time
-        return dedupedLeaderboard;
+        return leaderboardWindow;
 
     } catch (error) {
         console.warn("Firestore SDK leaderboard read failed. Trying authenticated REST fallback.", error);
@@ -1057,10 +1453,20 @@ export async function getGlobalLeaderboardEntries() {
             const authUser = await waitForLeaderboardAuth(2000);
             const idToken = authUser ? await authUser.getIdToken() : null;
             const leaderboardData = await fetchGlobalLeaderboardViaRest(idToken);
-            const dedupedLeaderboard = dedupeLeaderboardEntries(leaderboardData).slice(0, 10);
-            localLeaderboardCache = { source: 'global', entries: dedupedLeaderboard };
+            let currentEntry = null;
+            let currentRank = null;
+            if (authUser?.uid && idToken) {
+                try {
+                    currentEntry = await queryGlobalLeaderboardEntryForUserViaRest(idToken, authUser.uid);
+                    currentRank = await queryGlobalLeaderboardRankViaRest(idToken, currentEntry);
+                } catch (rankError) {
+                    console.warn("Could not fetch current player's REST global rank.", rankError);
+                }
+            }
+            const leaderboardWindow = buildLeaderboardDisplayWindow(leaderboardData, authUser?.uid || null, currentEntry, currentRank);
+            localLeaderboardCache = { source: 'global', entries: leaderboardWindow };
             lastFetchTime = now;
-            return dedupedLeaderboard;
+            return leaderboardWindow;
         } catch (fallbackError) {
             console.warn("Remote leaderboard unavailable.", fallbackError);
             throw fallbackError?.code ? fallbackError : error;
@@ -1079,6 +1485,9 @@ export async function getLeaderboard(source = activeLeaderboardSource) {
 
 // Modify addLeaderboardEntry to store the data and accept individual arguments
 export async function addLeaderboardEntry(playerName, score, maxHeight, time) {
+    score = finiteReplayInteger(score, 0, 0, 10000000);
+    maxHeight = Math.round(finiteReplayNumber(maxHeight, 0, 0, 100000) * 10) / 10;
+    time = String(time || '00:00').slice(0, 24);
     let leaderboardUserId = getLeaderboardUserId();
     const replay = compactReplayForStorage(buildCurrentRunReplay(score, maxHeight, time));
 
@@ -1218,6 +1627,7 @@ export function setPlayerInfo(uid, name) {
     console.log(`Setting player info: UID=${uid}, Name=${name}`);
     userId = uid;
     displayName = name || 'Anon'; // Use Anon if name is null/empty
+    loadBestRunReplayForCurrentPlayer();
 }
 
 // Add back setter for difficultyFactor

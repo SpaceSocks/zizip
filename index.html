@@ -11,9 +11,9 @@
     <title>Cosmic Zip</title>
     <!-- R64 Font -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&family=VT323&display=swap&family=Petit+Formal+Script&family=Petitet+Formal+Script" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=mobile-portrait-29">
+    <link rel="stylesheet" href="style.css?v=mobile-portrait-46">
     <link rel="icon" type="image/png" href="favicon.png?v=cosmic-zip-1">
-    <link rel="manifest" href="manifest.webmanifest?v=mobile-portrait-29">
+    <link rel="manifest" href="manifest.webmanifest?v=mobile-portrait-46">
     <!-- <script src="https://download.playfab.com/PlayFabClientApi.js"></script> -->
 </head>
 <body>
@@ -21,21 +21,15 @@
     <div id="loginScreen" class="centered-container">
         <h1>Cosmic Zip</h1>
         <p class="tagline">Climb a collapsing starfield. Land clean, chain jumps, and chase your best height.</p>
-        <div class="controls-panel" aria-label="Game controls">
-            <div class="control-pill"><span>Move</span><strong>A/D or Arrows</strong></div>
-            <div class="control-pill"><span>Jump</span><strong>W / Up / Space</strong></div>
-            <div class="control-pill"><span>Dash</span><strong>Q left, E right</strong></div>
-            <div class="control-pill"><span>Pause</span><strong>Esc</strong></div>
-        </div>
-        <div id="authForm">
+        <form id="authForm" autocomplete="on">
             <div class="login-lanes">
                 <section class="login-panel local-panel" aria-label="Local play">
                     <div class="section-label">Local run</div>
                     <div class="input-group">
                         <label for="localAliasInput">Alias:</label>
-                        <input type="text" id="localAliasInput" placeholder="Leaderboard name" maxlength="15">
+                        <input type="text" id="localAliasInput" name="local-alias" placeholder="Leaderboard name" maxlength="15" autocomplete="nickname">
                     </div>
-                    <button id="localPlayButton" class="auth-button primary-action">Play Local</button>
+                    <button id="localPlayButton" class="auth-button primary-action" type="button">Play Local</button>
                 </section>
 
                 <section class="login-panel online-panel" aria-label="Online leaderboard login">
@@ -43,27 +37,31 @@
 
                     <div class="input-group">
                         <label for="emailInput">Email:</label>
-                        <input type="email" id="emailInput" placeholder="your@email.com" required>
+                        <input type="email" id="emailInput" name="email" placeholder="your@email.com" required autocomplete="username">
                     </div>
                     <div class="input-group">
                         <label for="passwordInput">Password:</label>
-                        <input type="password" id="passwordInput" placeholder="Password (min 6 chars)" required>
+                        <input type="password" id="passwordInput" name="password" placeholder="Password (min 6 chars)" required autocomplete="current-password">
                     </div>
                     <div class="input-group remember-me" style="display: block;">
                          <label style="display: inline-block; margin-right: 10px;">
-                             <input type="checkbox" id="rememberPasswordCheckbox">
-                             Remember password
+                            <input type="checkbox" id="rememberPasswordCheckbox">
+                            Remember email
                          </label>
                     </div>
                     <div class="input-group register-only" style="display: none;">
                         <label for="aliasInput">Display Name:</label>
-                        <input type="text" id="aliasInput" placeholder="Your Alias" maxlength="15">
+                        <input type="text" id="aliasInput" name="display-name" placeholder="Your Alias" maxlength="15" autocomplete="nickname">
                     </div>
 
                     <div class="button-group">
-                        <button id="authButton">Login</button>
-                        <button id="quitButton">Quit</button>
+                        <button id="authButton" type="button">Login</button>
+                        <button id="quitButton" type="button">Quit</button>
                     </div>
+                    <button id="googleSignInButton" class="google-signin-button" type="button" aria-label="Continue with Google">
+                        <span class="google-mark" aria-hidden="true">G</span>
+                        <span>Continue with Google</span>
+                    </button>
                 </section>
             </div>
 
@@ -80,8 +78,8 @@
 
             <!-- NEW Options Button -->
             <div class="menu-actions">
-                <button id="leaderboardButton" class="auth-button">Leaderboard</button>
-                <button id="optionsButton" class="auth-button">Options</button>
+                <button id="leaderboardButton" class="auth-button" type="button">Leaderboard</button>
+                <button id="optionsButton" class="auth-button" type="button">Options</button>
             </div>
 
             <!-- Version Display Placeholder -->
@@ -89,7 +87,7 @@
                 <span id="versionDisplay" style="font-size: 0.8em; color: #888;"></span>
             </div>
 
-        </div>
+        </form>
     </div>
 
     <div id="leaderboardPanel" class="menu-overlay" style="display: none;">
@@ -110,6 +108,8 @@
 
     <!-- Game Canvas (initially hidden) -->
     <canvas id="gameCanvas" style="display: none;"></canvas>
+
+    <div id="controllerToast" class="controller-toast" aria-live="polite"></div>
 
     <div id="mobileControls" aria-label="Touch controls">
         <button id="mobilePauseButton" class="touch-pause-button" type="button" aria-label="Pause menu">MENU</button>
@@ -181,9 +181,26 @@
         <button id="aboutButton" class="menu-button game-button options-action">About</button>
         <div id="aboutPanel" class="about-panel" style="display: none;">
             <h3>About Cosmic Zip</h3>
-            <p>Climb a collapsing starfield, land clean, chain jumps, and chase one more best run.</p>
-            <p>Created by Ryan Geidl</p>
-            <p>Version <span id="appVersionLabel">Alpha</span></p>
+            <p class="about-summary">Climb a collapsing starfield, land clean, chain jumps, and chase one more best run.</p>
+            <div class="about-meta-grid" aria-label="Game credits">
+                <div class="about-meta-card">
+                    <span class="about-meta-label">Created By</span>
+                    <span class="about-meta-value">Ryan Geidl</span>
+                </div>
+                <div class="about-meta-card">
+                    <span class="about-meta-label">Version</span>
+                    <span class="about-meta-value" id="appVersionLabel">Alpha</span>
+                </div>
+            </div>
+            <div class="about-support">
+                <div class="about-support-title">Play Support</div>
+                <div class="about-support-grid">
+                    <span>PC</span>
+                    <span>Keyboard or controller</span>
+                    <span>Mobile</span>
+                    <span>Touch or Bluetooth controller</span>
+                </div>
+            </div>
             <button id="aboutCloseButton" class="menu-button game-button options-action">Close</button>
         </div>
         <button id="optionsBackButton" class="menu-button game-button options-action">Back</button>
@@ -217,7 +234,7 @@
     </div>
 
     <!-- Load main script as a module -->
-    <script type="module" src="game.js?v=mobile-portrait-29"></script>
+    <script type="module" src="game.js?v=mobile-portrait-46"></script>
     <!-- Note: The Firebase SDKs are now imported within firebaseConfig.js -->
 </body>
 </html>

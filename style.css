@@ -83,7 +83,8 @@ body.game-screen-active {
 }
 
 #mobileControls,
-#landscapeBlocker {
+#landscapeBlocker,
+#controllerToast {
     display: none;
 }
 
@@ -185,6 +186,34 @@ body.game-screen-active {
     filter: brightness(1.18);
 }
 
+.controller-toast {
+    position: fixed;
+    left: calc(var(--app-left) + (var(--app-width) / 2));
+    top: calc(var(--app-top) + max(18px, env(safe-area-inset-top)));
+    z-index: 70;
+    max-width: min(86vw, 520px);
+    padding: 10px 16px;
+    border: 2px solid rgba(143, 211, 255, 0.72);
+    border-radius: 8px;
+    background: rgba(17, 17, 24, 0.92);
+    color: #c7dcd0;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.38), inset 0 0 18px rgba(143, 211, 255, 0.08);
+    font-family: 'Petitinho', sans-serif;
+    font-size: clamp(0.88rem, 2.4vw, 1.15rem);
+    line-height: 1.1;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, -10px);
+    transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.controller-toast.visible {
+    display: block;
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
 /* Login Screen Styles - Mimic Old Look */
 #loginScreen {
     display: flex;
@@ -224,40 +253,6 @@ body.game-screen-active {
     font-size: 1.15em;
     line-height: 1.35;
     text-align: center;
-}
-
-.controls-panel {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 10px;
-    width: 100%;
-    margin-bottom: 18px;
-}
-
-.control-pill {
-    padding: 10px 10px;
-    border: 1px solid rgba(199, 220, 208, 0.24);
-    border-radius: 8px;
-    background: rgba(17, 17, 24, 0.35);
-    text-align: center;
-    box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.025);
-}
-
-.control-pill span,
-.control-pill strong {
-    display: block;
-}
-
-.control-pill span {
-    color: #f9c22b;
-    font-size: 0.9em;
-    margin-bottom: 6px;
-}
-
-.control-pill strong {
-    color: #ffffff;
-    font-size: 0.82em;
-    font-weight: normal;
 }
 
 #authForm {
@@ -428,6 +423,29 @@ body.game-screen-active {
     background: linear-gradient(90deg, #ffe28a, #fb6b1d);
 }
 
+.google-signin-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    margin-top: 12px;
+    border: 1px solid rgba(199, 220, 208, 0.38) !important;
+    background: #ffffff !important;
+    color: #2e222f !important;
+}
+
+.google-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: conic-gradient(from -45deg, #4285f4 0 25%, #34a853 0 50%, #fbbc05 0 75%, #ea4335 0);
+    color: #ffffff;
+    font: 700 15px Arial, sans-serif;
+}
+
 .menu-actions {
     display: flex;
     justify-content: center;
@@ -558,7 +576,7 @@ body.game-screen-active {
 
 .menu-leaderboard-row {
     display: grid;
-    grid-template-columns: 42px minmax(110px, 1fr) 86px 90px 84px 42px;
+    grid-template-columns: 54px minmax(110px, 1fr) 86px 90px 84px 42px;
     gap: 10px;
     align-items: center;
     padding: 9px 10px;
@@ -567,6 +585,22 @@ body.game-screen-active {
     background: rgba(17, 17, 24, 0.35);
     color: #ffffff;
     font-size: 1rem;
+}
+
+.menu-leaderboard-row.current-player {
+    border-color: rgba(249, 194, 43, 0.7);
+    background: rgba(249, 194, 43, 0.12);
+    box-shadow: inset 0 0 18px rgba(249, 194, 43, 0.08);
+}
+
+.menu-leaderboard-row.separator {
+    display: block;
+    padding: 2px 0;
+    border: 0;
+    background: transparent;
+    color: #9babb2;
+    text-align: center;
+    letter-spacing: 0;
 }
 
 .menu-leaderboard-row.header {
@@ -914,6 +948,7 @@ body:has(#loginScreen[style*="display: flex"]) {
     border-radius: 8px;
     background: rgba(17, 17, 24, 0.46);
     text-align: left;
+    max-width: 560px;
 }
 
 .about-panel h3 {
@@ -924,11 +959,73 @@ body:has(#loginScreen[style*="display: flex"]) {
     text-align: center;
 }
 
-.about-panel p {
-    margin: 10px 0;
+.about-summary {
+    margin: 0 auto 16px;
     color: #c7dcd0;
-    font-size: 1.05em;
+    font-size: clamp(0.95rem, 2.2vh, 1.05rem);
     line-height: 1.35;
+    max-width: 38ch;
+    text-align: center;
+}
+
+.about-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0 0 14px;
+}
+
+.about-meta-card,
+.about-support {
+    border: 1px solid rgba(199, 220, 208, 0.24);
+    border-radius: 8px;
+    background: rgba(42, 33, 48, 0.58);
+}
+
+.about-meta-card {
+    padding: 12px;
+    text-align: center;
+}
+
+.about-meta-label {
+    display: block;
+    margin-bottom: 7px;
+    color: #f9c22b;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+}
+
+.about-meta-value {
+    display: block;
+    color: #ffffff;
+    font-size: clamp(0.95rem, 2.4vh, 1.12rem);
+}
+
+.about-support {
+    padding: 12px;
+}
+
+.about-support-title {
+    margin-bottom: 9px;
+    color: #f9c22b;
+    font-size: 0.78rem;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.about-support-grid {
+    display: grid;
+    grid-template-columns: minmax(78px, auto) minmax(0, 1fr);
+    gap: 8px 12px;
+    align-items: center;
+    color: #c7dcd0;
+    font-size: clamp(0.86rem, 2vh, 0.98rem);
+    line-height: 1.2;
+}
+
+.about-support-grid span:nth-child(odd) {
+    color: #ffffff;
+    text-align: right;
 }
 
 #aboutCloseButton {
@@ -1049,19 +1146,6 @@ input[type=range]::-moz-range-track {
         white-space: normal;
     }
 
-    .controls-panel {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
-    }
-
-    .control-pill {
-        padding: 9px 7px;
-    }
-
-    .control-pill strong {
-        font-size: 0.72em;
-    }
-
     .login-panel {
         padding: 14px;
     }
@@ -1081,7 +1165,7 @@ input[type=range]::-moz-range-track {
     }
 
     .menu-leaderboard-row {
-        grid-template-columns: 32px minmax(80px, 1fr) 62px 70px 34px;
+        grid-template-columns: 42px minmax(80px, 1fr) 62px 70px 34px;
         gap: 7px;
         font-size: 0.82rem;
     }
@@ -1163,27 +1247,6 @@ body.mobile-viewport .tagline {
     margin: 0 auto 18px;
     font-size: clamp(0.78rem, 3.9vw, 1.02rem);
     line-height: 1.22;
-}
-
-body.mobile-viewport .controls-panel {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    margin-bottom: 14px;
-}
-
-body.mobile-viewport .control-pill {
-    min-height: 84px;
-    padding: 10px 7px;
-}
-
-body.mobile-viewport .control-pill span {
-    font-size: clamp(0.82rem, 4vw, 1rem);
-    margin-bottom: 8px;
-}
-
-body.mobile-viewport .control-pill strong {
-    font-size: clamp(0.65rem, 3.4vw, 0.84rem);
-    line-height: 1.25;
 }
 
 body.mobile-viewport .login-lanes {
@@ -1282,7 +1345,7 @@ body.mobile-viewport .menu-leaderboard-row.header {
 }
 
 body.mobile-viewport .menu-leaderboard-row {
-    grid-template-columns: 34px minmax(0, 1fr) 38px;
+    grid-template-columns: 48px minmax(0, 1fr) 38px;
     grid-template-areas:
         "rank name replay"
         "rank score replay"
@@ -1291,6 +1354,11 @@ body.mobile-viewport .menu-leaderboard-row {
     gap: 3px 9px;
     padding: 10px;
     font-size: 0.9rem;
+}
+
+body.mobile-viewport .menu-leaderboard-row.separator {
+    display: block;
+    padding: 2px 0;
 }
 
 body.mobile-viewport .menu-leaderboard-row .number {
@@ -1446,6 +1514,30 @@ body.mobile-viewport .options-item span {
 
 body.mobile-viewport .toggle-option {
     grid-template-columns: minmax(0, 1fr) 56px;
+}
+
+body.mobile-viewport .about-panel {
+    margin-top: 12px;
+    padding: 14px;
+}
+
+body.mobile-viewport .about-panel h3 {
+    font-size: 1.35rem;
+}
+
+body.mobile-viewport .about-meta-grid {
+    gap: 8px;
+}
+
+body.mobile-viewport .about-meta-card,
+body.mobile-viewport .about-support {
+    padding: 10px;
+}
+
+body.mobile-viewport .about-support-grid {
+    grid-template-columns: minmax(58px, auto) minmax(0, 1fr);
+    gap: 7px 9px;
+    font-size: 0.82rem;
 }
 
 body.mobile-viewport.game-screen-active.landscape-blocked #landscapeBlocker {

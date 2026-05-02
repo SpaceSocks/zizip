@@ -1,20 +1,22 @@
-import * as state from './state.js?v=mobile-portrait-29';
-import * as audio from './audio.js?v=mobile-portrait-29'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-46';
+import * as audio from './audio.js?v=mobile-portrait-46'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-29';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-46';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-29';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-46';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
 const loginStarCanvas = document.getElementById('loginStarCanvas');
 const loginStarCtx = loginStarCanvas ? loginStarCanvas.getContext('2d') : null;
+const authForm = document.getElementById('authForm');
 const localAliasInput = document.getElementById('localAliasInput');
 const emailInput = document.getElementById('emailInput');
 const passwordInput = document.getElementById('passwordInput');
 const aliasInput = document.getElementById('aliasInput'); // Was playerNameInput
 const aliasGroup = document.querySelector('.input-group.register-only');
 const authButton = document.getElementById('authButton'); // Was startButton
+const googleSignInButton = document.getElementById('googleSignInButton');
 const quitButton = document.getElementById('quitButton');
 const localPlayButton = document.getElementById('localPlayButton');
 const infoText = document.getElementById('infoText');
@@ -72,10 +74,11 @@ const replayForwardButton = document.getElementById('replayForwardButton');
 const replaySpeedButton = document.getElementById('replaySpeedButton');
 const replayTimeline = document.getElementById('replayTimeline');
 const replayTimeLabel = document.getElementById('replayTimeLabel');
+const controllerToast = document.getElementById('controllerToast');
 
 // localStorage Keys
 const LAST_EMAIL_KEY = 'zipzip_lastEmail';
-const SAVED_PASSWORD_KEY = 'zipzip_savedPassword'; // !! INSECURE !!
+const LEGACY_SAVED_PASSWORD_KEY = 'zipzip_savedPassword';
 const LOCAL_ALIAS_KEY = 'zipzip_localAlias';
 const MOBILE_CONTROL_PREFS = {
     moveSize: 'zipzip_mobileMoveControlSize',
@@ -107,6 +110,28 @@ let replayReturnTarget = 'gameover';
 let menuLeaderboardSource = 'local';
 let gameOverLeaderboardSource = 'local';
 let gameOverLeaderboardRequestId = 0;
+let controllerToastTimer = null;
+let sessionPasswordCache = '';
+let sessionPasswordEmail = '';
+let redirectResultHandled = false;
+
+function clearLegacySavedPassword() {
+    localStorage.removeItem(LEGACY_SAVED_PASSWORD_KEY);
+}
+
+async function offerBrowserPasswordSave(email, password, displayName = '') {
+    if (!email || !password || !window.PasswordCredential || !navigator.credentials?.store) return;
+    try {
+        const credential = new PasswordCredential({
+            id: email,
+            name: displayName || email,
+            password
+        });
+        await navigator.credentials.store(credential);
+    } catch (error) {
+        console.info('Browser password manager did not store credentials.', error);
+    }
+}
 
 const LOGIN_STAR_VARIANTS = [
     { count: 340, color: '#253039', alphaMin: 0.10, alphaMax: 0.20, sizeMin: 0.98, sizeMax: 1.5, speedMin: 0.030, speedMax: 0.066 },
@@ -117,6 +142,20 @@ const LOGIN_STAR_VARIANTS = [
 ];
 const LOGIN_STAR_SIZE_SCALE = 2;
 const LOGIN_WHITE_STAR_SPEED_SCALE = 3;
+
+export function showControllerToast(message) {
+    if (!controllerToast || !message) return;
+    controllerToast.textContent = message;
+    controllerToast.style.display = 'block';
+    controllerToast.classList.add('visible');
+    if (controllerToastTimer) clearTimeout(controllerToastTimer);
+    controllerToastTimer = setTimeout(() => {
+        controllerToast.classList.remove('visible');
+        controllerToastTimer = setTimeout(() => {
+            controllerToast.style.display = 'none';
+        }, 180);
+    }, 2600);
+}
 
 function randomBetween(min, max) {
     return Math.random() * (max - min) + min;
@@ -277,10 +316,17 @@ function renderLeaderboard(entries = [], targetList = menuLeaderboardList, repla
     );
     targetList.appendChild(header);
 
-    entries.slice(0, 10).forEach((entry, index) => {
+    entries.forEach((entry, index) => {
+        if (entry.separated) {
+            const separator = document.createElement('div');
+            separator.className = 'menu-leaderboard-row separator';
+            separator.textContent = '...';
+            targetList.appendChild(separator);
+        }
+
         const row = document.createElement('div');
-        row.className = 'menu-leaderboard-row';
-        const hasReplay = entry.replay && Array.isArray(entry.replay.samples) && entry.replay.samples.length > 0;
+        row.className = `menu-leaderboard-row${entry.isCurrentPlayer ? ' current-player' : ''}`;
+        const hasReplay = state.hasReplayData(entry.replay);
         const replayButton = document.createElement('button');
         replayButton.className = 'replay-icon-button';
         replayButton.type = 'button';
@@ -290,7 +336,7 @@ function renderLeaderboard(entries = [], targetList = menuLeaderboardList, repla
         replayButton.addEventListener('click', () => startLeaderboardReplay(entry, replayReturnTarget));
 
         row.append(
-            makeLeaderboardCell('number', `${index + 1}.`),
+            makeLeaderboardCell('number', entry.rank ? `${entry.rank}.` : `${index + 1}.`),
             makeLeaderboardCell('name', (entry.displayName || 'Anon').toUpperCase()),
             makeLeaderboardCell('metric score', String(entry.score ?? 0)),
             makeLeaderboardCell('metric height', `${Math.round(entry.maxHeight || 0)} M`),
@@ -325,7 +371,7 @@ async function showLeaderboardPanel(force = true, source = menuLeaderboardSource
         const entries = await state.getLeaderboard(menuLeaderboardSource);
         renderLeaderboard(entries, menuLeaderboardList);
         menuLeaderboardStatus.textContent = entries.length
-            ? `${menuLeaderboardSource === 'global' ? 'Global' : 'Local'} top runs`
+            ? `${menuLeaderboardSource === 'global' ? 'Global' : 'Local'} top 100 runs`
             : `No ${menuLeaderboardSource === 'global' ? 'global' : 'local'} runs yet.`;
     } catch (error) {
         console.warn("Could not load menu leaderboard.", error);
@@ -360,7 +406,7 @@ export async function showGameOverLeaderboard(force = true, source = gameOverLea
         if (requestId !== gameOverLeaderboardRequestId) return;
         renderLeaderboard(entries, gameOverLeaderboardList, 'gameover');
         gameOverLeaderboardStatus.textContent = entries.length
-            ? `${gameOverLeaderboardSource === 'global' ? 'Global' : 'Local'} top runs`
+            ? `${gameOverLeaderboardSource === 'global' ? 'Global' : 'Local'} top 100 runs`
             : `No ${gameOverLeaderboardSource === 'global' ? 'global' : 'local'} runs yet.`;
     } catch (error) {
         if (requestId !== gameOverLeaderboardRequestId) return;
@@ -407,6 +453,56 @@ async function getAuthApi() {
     }
 
     return authApiPromise;
+}
+
+function getOnlineDisplayName(user) {
+    const emailName = user?.email ? user.email.split('@')[0] : '';
+    return user?.displayName || emailName || 'Anon';
+}
+
+function shouldUseGoogleRedirect() {
+    const isTouch = window.matchMedia?.('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+    const isMobileViewport = document.body?.classList.contains('mobile-viewport');
+    const userAgent = navigator.userAgent || '';
+    const isEmbeddedBrowser = /FBAN|FBAV|Instagram|Line|Messenger|wv|WebView/i.test(userAgent);
+    return isMobileViewport || isTouch || isEmbeddedBrowser;
+}
+
+async function startOnlineGameForUser(user, successMessage) {
+    state.setPlayerInfo(user.uid, getOnlineDisplayName(user));
+    state.setActiveLeaderboardSource('global');
+    if (user.email) {
+        localStorage.setItem(LAST_EMAIL_KEY, user.email);
+        emailInput.value = user.email;
+        rememberPasswordCheckbox.checked = true;
+    }
+    clearLegacySavedPassword();
+    infoText.textContent = successMessage;
+
+    await clearFreshStartRemoteLeaderboard();
+
+    setTimeout(() => {
+        hideLoginScreen();
+        startGameLogic();
+        state.setCurrentGameState(state.GameState.Playing);
+        authButton.disabled = false;
+        if (googleSignInButton) googleSignInButton.disabled = false;
+    }, 1000);
+}
+
+function buildGoogleProvider(GoogleAuthProvider) {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({
+        prompt: 'select_account'
+    });
+    const email = emailInput?.value?.trim();
+    if (email) {
+        provider.setCustomParameters({
+            prompt: 'select_account',
+            login_hint: email
+        });
+    }
+    return provider;
 }
 
 // --- Options Menu Focus Management (NEW) ---
@@ -545,9 +641,15 @@ export function showLoginScreen() {
     if (canvasEl) canvasEl.style.display = 'none';
     // Reset form for display
     if (localAliasInput) localAliasInput.value = localStorage.getItem(LOCAL_ALIAS_KEY) || '';
-    emailInput.value = localStorage.getItem(LAST_EMAIL_KEY) || '';
-    passwordInput.value = localStorage.getItem(SAVED_PASSWORD_KEY) || '';
-    rememberPasswordCheckbox.checked = !!passwordInput.value;
+    const savedEmail = localStorage.getItem(LAST_EMAIL_KEY) || '';
+    emailInput.value = savedEmail;
+    if (sessionPasswordCache && sessionPasswordEmail === savedEmail) {
+        passwordInput.value = sessionPasswordCache;
+    } else if (!sessionPasswordCache) {
+        passwordInput.value = '';
+    }
+    rememberPasswordCheckbox.checked = !!savedEmail;
+    clearLegacySavedPassword();
     aliasInput.value = '';
     setAuthMode(false); // Ensure it starts in Login mode
     infoText.textContent = 'Play locally now, or sign in for the online leaderboard.';
@@ -647,12 +749,14 @@ function setAuthMode(register) {
     isRegisterMode = register;
     if (isRegisterMode) {
         authButton.textContent = 'Register';
+        if (passwordInput) passwordInput.autocomplete = 'new-password';
         toggleAuthLink.textContent = 'Already have an account? Login';
         if (aliasGroup) aliasGroup.style.display = 'flex'; else console.error('aliasGroup not found!'); // Check element exists
         if (resetPasswordLink) resetPasswordLink.style.display = 'none'; else console.error('resetPasswordLink not found!');
         if (rememberGroup) rememberGroup.style.display = 'none'; // Hide remember on register
     } else {
         authButton.textContent = 'Login';
+        if (passwordInput) passwordInput.autocomplete = 'current-password';
         toggleAuthLink.textContent = 'Need to Register?';
         if (aliasGroup) aliasGroup.style.display = 'none'; else console.error('aliasGroup not found!'); // Check element exists
         if (resetPasswordLink) resetPasswordLink.style.display = 'block'; else console.error('resetPasswordLink not found!');
@@ -685,6 +789,7 @@ async function handleAuthClick() {
     }
 
     authButton.disabled = true;
+    if (googleSignInButton) googleSignInButton.disabled = true;
     requestMobileFullscreen();
     infoText.textContent = isRegisterMode ? 'Registering...' : 'Logging in...';
 
@@ -707,7 +812,10 @@ async function handleAuthClick() {
             state.setPlayerInfo(userCredential.user.uid, alias);
             state.setActiveLeaderboardSource('global');
             localStorage.setItem(LAST_EMAIL_KEY, email);
-            localStorage.removeItem(SAVED_PASSWORD_KEY);
+            sessionPasswordEmail = email;
+            sessionPasswordCache = password;
+            await offerBrowserPasswordSave(email, password, alias);
+            clearLegacySavedPassword();
             infoText.textContent = 'Registration successful! Starting game...';
         } else {
             // --- Login --- //
@@ -716,12 +824,17 @@ async function handleAuthClick() {
             // Store relevant info (UID and Display Name from profile)
             state.setPlayerInfo(userCredential.user.uid, userCredential.user.displayName || 'Anon'); // Use saved name or default
             state.setActiveLeaderboardSource('global');
-            localStorage.setItem(LAST_EMAIL_KEY, email);
             if (rememberPasswordCheckbox.checked) {
-                localStorage.setItem(SAVED_PASSWORD_KEY, password);
+                localStorage.setItem(LAST_EMAIL_KEY, email);
+                sessionPasswordEmail = email;
+                sessionPasswordCache = password;
             } else {
-                localStorage.removeItem(SAVED_PASSWORD_KEY);
+                localStorage.removeItem(LAST_EMAIL_KEY);
+                sessionPasswordEmail = '';
+                sessionPasswordCache = '';
             }
+            await offerBrowserPasswordSave(email, password, userCredential.user.displayName || email);
+            clearLegacySavedPassword();
             infoText.textContent = 'Login successful! Starting game...';
         }
 
@@ -734,12 +847,63 @@ async function handleAuthClick() {
             startGameLogic();
             state.setCurrentGameState(state.GameState.Playing);
             authButton.disabled = false; // Re-enable button for next time
+            if (googleSignInButton) googleSignInButton.disabled = false;
         }, 1000);
 
     } catch (error) {
         console.error("Authentication error:", error);
         infoText.textContent = getFirebaseAuthErrorMessage(error) || 'Online login unavailable. Use Play Local to start now.';
         authButton.disabled = false;
+        if (googleSignInButton) googleSignInButton.disabled = false;
+    }
+}
+
+async function handleGoogleSignInClick() {
+    if (googleSignInButton) googleSignInButton.disabled = true;
+    authButton.disabled = true;
+    requestMobileFullscreen();
+    infoText.textContent = 'Opening Google sign-in...';
+
+    try {
+        const {
+            auth,
+            GoogleAuthProvider,
+            signInWithPopup,
+            signInWithRedirect
+        } = await getAuthApi();
+        const provider = buildGoogleProvider(GoogleAuthProvider);
+
+        if (shouldUseGoogleRedirect()) {
+            sessionStorage.setItem('zipzip_googleRedirectPending', '1');
+            await signInWithRedirect(auth, provider);
+            return;
+        }
+
+        const userCredential = await signInWithPopup(auth, provider);
+        await startOnlineGameForUser(userCredential.user, 'Google sign-in successful! Starting game...');
+    } catch (error) {
+        console.error("Google sign-in error:", error);
+        const canTryRedirect = error?.code === 'auth/popup-blocked' ||
+            error?.code === 'auth/popup-closed-by-user' ||
+            error?.code === 'auth/cancelled-popup-request' ||
+            error?.code === 'auth/operation-not-supported-in-this-environment';
+
+        if (canTryRedirect) {
+            try {
+                const { auth, GoogleAuthProvider, signInWithRedirect } = await getAuthApi();
+                sessionStorage.setItem('zipzip_googleRedirectPending', '1');
+                await signInWithRedirect(auth, buildGoogleProvider(GoogleAuthProvider));
+                return;
+            } catch (redirectError) {
+                console.error("Google redirect sign-in error:", redirectError);
+                infoText.textContent = getFirebaseAuthErrorMessage(redirectError) || 'Google sign-in could not start.';
+            }
+        } else {
+            infoText.textContent = getFirebaseAuthErrorMessage(error) || 'Google sign-in failed. Check that Google is enabled in Firebase.';
+        }
+
+        authButton.disabled = false;
+        if (googleSignInButton) googleSignInButton.disabled = false;
     }
 }
 
@@ -764,8 +928,16 @@ function getFirebaseAuthErrorMessage(error) {
             return 'Password is too weak (must be 6+ characters).';
         case 'auth/operation-not-allowed':
             return 'Email/password accounts are not enabled.'; // Check Firebase console
+        case 'auth/popup-blocked':
+            return 'Popup was blocked. Try again or use your browser directly.';
+        case 'auth/popup-closed-by-user':
+            return 'Google sign-in was closed before it finished.';
+        case 'auth/unauthorized-domain':
+            return 'This domain is not authorized in Firebase Authentication.';
+        case 'auth/account-exists-with-different-credential':
+            return 'That email already uses another sign-in method. Log in with the original method first.';
         case 'auth/network-request-failed':
-             return 'Network error. Check connection.';
+            return 'Network error. Check connection.';
         case 'auth/too-many-requests':
             return 'Too many attempts. Wait a bit, then resend the reset email.';
         case 'auth/invalid-continue-uri':
@@ -1028,15 +1200,47 @@ async function initializeAuthStateListener() {
                 console.log("No user signed in.");
             }
             authButton.disabled = false;
+            if (googleSignInButton) googleSignInButton.disabled = false;
             quitButton.disabled = false;
         });
     } catch (error) {
         console.warn("Online auth unavailable; local play remains available.", error);
         authButton.disabled = false;
+        if (googleSignInButton) googleSignInButton.disabled = false;
         quitButton.disabled = false;
         if (state.getCurrentGameState() === state.GameState.MainMenu) {
             infoText.textContent = 'Online login unavailable. Play Local works offline.';
         }
+    }
+}
+
+async function handleGoogleRedirectResult() {
+    if (redirectResultHandled) return;
+    redirectResultHandled = true;
+
+    const wasPending = sessionStorage.getItem('zipzip_googleRedirectPending') === '1';
+    if (!wasPending) return;
+
+    try {
+        const { auth, getRedirectResult } = await getAuthApi();
+        infoText.textContent = 'Finishing Google sign-in...';
+        const result = await getRedirectResult(auth);
+        sessionStorage.removeItem('zipzip_googleRedirectPending');
+
+        if (result?.user) {
+            if (googleSignInButton) googleSignInButton.disabled = true;
+            authButton.disabled = true;
+            await startOnlineGameForUser(result.user, 'Google sign-in successful! Starting game...');
+        } else {
+            authButton.disabled = false;
+            if (googleSignInButton) googleSignInButton.disabled = false;
+        }
+    } catch (error) {
+        console.error("Google redirect result error:", error);
+        sessionStorage.removeItem('zipzip_googleRedirectPending');
+        infoText.textContent = getFirebaseAuthErrorMessage(error) || 'Google sign-in did not finish.';
+        authButton.disabled = false;
+        if (googleSignInButton) googleSignInButton.disabled = false;
     }
 }
 
@@ -1054,37 +1258,24 @@ async function clearFreshStartRemoteLeaderboard() {
     }
 }
 
-async function ensureLocalPlayIdentity(localAlias = 'Local Player') {
-    if (state.getUserId() && !state.isLocalPlayer()) {
-        state.setPlayerInfo(state.getUserId(), localAlias);
-        await clearFreshStartRemoteLeaderboard();
-        return;
-    }
-
+function ensureLocalPlayIdentity(localAlias = 'Local Player') {
     state.setPlayerInfo('local-player', localAlias);
-
-    try {
-        const { auth, signInAnonymously } = await getAuthApi();
-        const userCredential = await signInAnonymously(auth);
-        state.setPlayerInfo(userCredential.user.uid, localAlias);
-        await clearFreshStartRemoteLeaderboard();
-        console.log("Anonymous Firebase session ready for local play leaderboard.");
-    } catch (error) {
-        console.warn("Anonymous Firebase sign-in unavailable. Local play will use fallback leaderboard id.", error);
-    }
 }
 
 // --- Initialization ---
 export function initializeUI() {
     if (uiInitialized) return;
     uiInitialized = true;
+    clearLegacySavedPassword();
     console.log("Initializing UI..."); // LOG
     state.clearLocalLeaderboardForFreshStart();
 
     // Quick check if elements exist
+    if (!authForm) console.error('authForm not found during init!');
     if (!toggleAuthLink) console.error('toggleAuthLink not found during init!');
     if (!localAliasInput) console.error('localAliasInput not found during init!');
     if (!authButton) console.error('authButton not found during init!');
+    if (!googleSignInButton) console.error('googleSignInButton not found during init!');
     if (!quitButton) console.error('quitButton not found during init!');
     if (!localPlayButton) console.error('localPlayButton not found during init!');
     if (!leaderboardButton) console.error('leaderboardButton not found!');
@@ -1116,13 +1307,26 @@ export function initializeUI() {
     if (!replayControls) console.error('replayControls not found!');
 
     // Attach Listeners
+    if (authForm) {
+        authForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (document.activeElement === localAliasInput) {
+                handleLocalPlayClick();
+            } else if (!authButton.disabled) {
+                handleAuthClick();
+            }
+        });
+    }
     authButton.addEventListener('click', handleAuthClick);
+    if (googleSignInButton) {
+        googleSignInButton.addEventListener('click', handleGoogleSignInClick);
+    }
     quitButton.addEventListener('click', handleQuitClick);
     if (localPlayButton) {
         localPlayButton.addEventListener('click', handleLocalPlayClick);
     }
     if (leaderboardButton) {
-        leaderboardButton.addEventListener('click', () => showLeaderboardPanel(true, state.getActiveLeaderboardSource()));
+        leaderboardButton.addEventListener('click', () => showLeaderboardPanel(true, 'local'));
     }
     if (leaderboardRefreshButton) {
         leaderboardRefreshButton.addEventListener('click', () => showLeaderboardPanel(true, menuLeaderboardSource));
@@ -1165,8 +1369,9 @@ export function initializeUI() {
     // Optional: Enter key submission
     [localAliasInput, emailInput, passwordInput, aliasInput].forEach(input => {
         if (!input) return;
-        input.addEventListener('keypress', (e) => {
+        input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !authButton.disabled) {
+                e.preventDefault();
                 if (input === localAliasInput) {
                     handleLocalPlayClick();
                 } else {
@@ -1303,8 +1508,10 @@ export function initializeUI() {
 
     showLoginScreen();
     authButton.disabled = false;
+    if (googleSignInButton) googleSignInButton.disabled = false;
     quitButton.disabled = false;
     initializeAuthStateListener();
+    handleGoogleRedirectResult();
 
     setupPauseMenuFocus(); // Initialize focus management
 

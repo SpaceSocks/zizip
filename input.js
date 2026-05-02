@@ -1,10 +1,10 @@
 // This file will handle keyboard and gamepad input 
-import * as state from './state.js?v=mobile-portrait-29';
-import * as audio from './audio.js?v=mobile-portrait-29';
-import * as ui from './ui.js?v=mobile-portrait-29';
-import { player } from './entities.js?v=mobile-portrait-29';
-import { AXIS_DEADZONE, PLAYER_JUMP_POWER, PLAYER_DASH_POWER, PLAYER_DASH_DURATION, PLAYER_DASH_COOLDOWN, PLAYER_GRAVITY } from './constants.js?v=mobile-portrait-29';
-import { getPlatforms } from './state.js?v=mobile-portrait-29'; // Import getPlatforms
+import * as state from './state.js?v=mobile-portrait-46';
+import * as audio from './audio.js?v=mobile-portrait-46';
+import * as ui from './ui.js?v=mobile-portrait-46';
+import { player } from './entities.js?v=mobile-portrait-46';
+import { AXIS_DEADZONE, PLAYER_JUMP_POWER, PLAYER_DASH_POWER, PLAYER_DASH_DURATION, PLAYER_DASH_COOLDOWN, PLAYER_GRAVITY } from './constants.js?v=mobile-portrait-46';
+import { getPlatforms } from './state.js?v=mobile-portrait-46'; // Import getPlatforms
 
 // --- Input State (shared within this module) ---
 export const keys = {
@@ -244,18 +244,108 @@ let wasStartPressed = false;
 let wasJumpPressed = false; 
 let wasL1Pressed = false; // NEW: Track L1 (Button 4)
 let wasR1Pressed = false; // NEW: Track R1 (Button 5)
+let activeGamepadInfo = null;
+let lastAnnouncedGamepadKey = '';
+
+function getFirstConnectedGamepad() {
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    return Array.from(gamepads || []).find(Boolean) || null;
+}
+
+function classifyGamepad(gamepad) {
+    const id = gamepad?.id || '';
+    const normalizedId = id.toLowerCase();
+    const isPlayStation = /dualsense|dualshock|playstation|wireless controller|sony|ps5|ps4/.test(normalizedId);
+    const isXbox = /xbox|xinput|microsoft/.test(normalizedId);
+
+    if (isPlayStation) {
+        return {
+            id,
+            index: gamepad.index,
+            family: 'playstation',
+            label: /dualsense|ps5/.test(normalizedId) ? 'PS5 controller' : 'PlayStation controller',
+            hint: 'LEFT STICK MOVE   X JUMP   L1/R1 DASH   OPTIONS PAUSE'
+        };
+    }
+
+    if (isXbox) {
+        return {
+            id,
+            index: gamepad.index,
+            family: 'xbox',
+            label: 'Xbox controller',
+            hint: 'LEFT STICK MOVE   A JUMP   LB/RB DASH   MENU PAUSE'
+        };
+    }
+
+    return {
+        id,
+        index: gamepad?.index || 0,
+        family: 'generic',
+        label: 'Controller',
+        hint: 'LEFT STICK MOVE   SOUTH BUTTON JUMP   SHOULDERS DASH   START PAUSE'
+    };
+}
+
+function getGamepadKey(gamepad) {
+    return gamepad ? `${gamepad.index}:${gamepad.id || 'controller'}` : '';
+}
+
+function updateActiveGamepad(gamepad, announce = false) {
+    if (!gamepad) {
+        activeGamepadInfo = null;
+        return null;
+    }
+
+    activeGamepadInfo = classifyGamepad(gamepad);
+    const key = getGamepadKey(gamepad);
+    if (announce && key && key !== lastAnnouncedGamepadKey) {
+        lastAnnouncedGamepadKey = key;
+        ui.showControllerToast(`${activeGamepadInfo.label} connected`);
+    }
+    return activeGamepadInfo;
+}
+
+function handleGamepadConnected(event) {
+    updateActiveGamepad(event.gamepad, true);
+}
+
+function handleGamepadDisconnected(event) {
+    const info = classifyGamepad(event.gamepad);
+    if (activeGamepadInfo?.index === event.gamepad?.index) {
+        activeGamepadInfo = null;
+    }
+    if (lastAnnouncedGamepadKey === getGamepadKey(event.gamepad)) {
+        lastAnnouncedGamepadKey = '';
+    }
+    ui.showControllerToast(`${info.label} disconnected`);
+}
+
+export function getActiveGamepadInfo() {
+    return updateActiveGamepad(getFirstConnectedGamepad(), false);
+}
+
+export function getCurrentControlHint() {
+    const gamepadInfo = getActiveGamepadInfo();
+    if (gamepadInfo) return gamepadInfo.hint;
+    if (document.body?.classList.contains('mobile-viewport')) return '';
+    return 'A/D MOVE   SPACE JUMP   Q/E DASH   ESC PAUSE';
+}
+
+window.__cosmicZipGetControlHint = getCurrentControlHint;
 
 export function handleGamepadInput() {
-    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-    if (!gamepads || !gamepads[0]) {
+    const gp = getFirstConnectedGamepad();
+    if (!gp) {
         wasStartPressed = false;
         wasJumpPressed = false;
         wasL1Pressed = false; // Reset if controller disconnects
         wasR1Pressed = false; // Reset if controller disconnects
+        activeGamepadInfo = null;
         return;
     }
 
-    const gp = gamepads[0];
+    updateActiveGamepad(gp, true);
     const startPressed = gp.buttons[9] && gp.buttons[9].pressed;
     const jumpPressed = gp.buttons[0] && gp.buttons[0].pressed;
     const l1Pressed = gp.buttons[4] && gp.buttons[4].pressed; // L1
@@ -590,6 +680,8 @@ function triggerDash(direction) {
 export function initializeInput() {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('gamepadconnected', handleGamepadConnected);
+    window.addEventListener('gamepaddisconnected', handleGamepadDisconnected);
     setupFirstTouchAudioUnlock();
     setupTouchControls();
     console.log("Input listeners initialized.");

@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-29';
-import * as graphics from './graphics.js?v=mobile-portrait-29';
-import * as input from './input.js?v=mobile-portrait-29';
-import * as audio from './audio.js?v=mobile-portrait-29';
-import { player, createPlatform } from './entities.js?v=mobile-portrait-29';
-import * as ui from './ui.js?v=mobile-portrait-29'; // Import UI
+import * as state from './state.js?v=mobile-portrait-46';
+import * as graphics from './graphics.js?v=mobile-portrait-46';
+import * as input from './input.js?v=mobile-portrait-46';
+import * as audio from './audio.js?v=mobile-portrait-46';
+import { player, createPlatform } from './entities.js?v=mobile-portrait-46';
+import * as ui from './ui.js?v=mobile-portrait-46'; // Import UI
 import {
     MIN_VERT_GAP, MAX_VERT_GAP, PLATFORM_START_WIDTH, PLATFORM_EARLY_MIN_WIDTH, PLATFORM_MIN_WIDTH,
     PLATFORM_WIDTH_DIFFICULTY_HEIGHT, PLAYER_GRAVITY, PLAYER_JUMP_POWER, PLAYER_SPEED,
@@ -12,7 +12,7 @@ import {
     PLATFORM_PROBABILITY, PLATFORM_MIDDLE_THRESHOLD,
     PLATFORM_FLASH_DURATION, PLATFORM_FLASH_INTERVAL_MAX, PLATFORM_FLASH_INTERVAL_MIN,
     PLATFORM_FLASH_START_DELAY, PLAYER_AIR_CONTROL_FACTOR
-} from './constants.js?v=mobile-portrait-29';
+} from './constants.js?v=mobile-portrait-46';
 
 // --- Game Variables ---
 let animationFrameId = null;
@@ -42,20 +42,50 @@ function getRespawnPlatformBottomOffset() {
     return Math.max(190, Math.min(250, Math.round(graphics.canvas.height * 0.24)));
 }
 
+function getPlayerAnimationState() {
+    if (!player.isGrounded) {
+        return player.velocityY < 0 ? 'jump' : 'fall';
+    }
+    return Math.abs(player.velocityX || 0) > 0.35 ? 'walk' : 'idle';
+}
+
+function getPlayerAnimationFrame(animationState, timeMs = state.getElapsedTime()) {
+    if (animationState !== 'walk') {
+        if (animationState === 'jump') return 5;
+        if (animationState === 'fall') return 6;
+        return 0;
+    }
+    return 1 + Math.floor((timeMs / 1000) * 10) % 4;
+}
+
 function recordCurrentReplaySample(force = false, timeOverride = null) {
     const groundedPlatform = player.groundedOnPlatform || null;
+    const replayTime = typeof timeOverride === 'number' ? timeOverride : state.getElapsedTime();
+    const animationState = getPlayerAnimationState();
+    const platformSnapshots = state.getPlatforms()
+        .filter(platform => platform.movement)
+        .slice(0, 8)
+        .map(platform => ({
+            id: platform.id,
+            x: platform.x,
+            y: platform.y
+        }));
+
     state.recordRunReplaySample({
-        time: typeof timeOverride === 'number' ? timeOverride : state.getElapsedTime(),
+        time: replayTime,
         height: getCurrentRunHeight(),
         xRatio: (player.x + player.width / 2) / graphics.canvas.width,
         yRatio: (player.y + player.height / 2) / graphics.canvas.height,
         facing: player.facing || 1,
+        animationState,
+        animationFrame: getPlayerAnimationFrame(animationState, replayTime),
         visible: player.visible !== false,
         cameraDrop: deathSequence?.cameraDrop || 0,
         groundedPlatformId: groundedPlatform?.id ?? null,
         groundedOffsetRatio: groundedPlatform
             ? ((player.x + player.width / 2) - groundedPlatform.x) / Math.max(1, groundedPlatform.width)
             : null,
+        platformSnapshots,
         force
     });
 }
@@ -72,7 +102,14 @@ function updatePlayerTrail() {
     player.trailUpdateCounter++;
     if (player.trailUpdateCounter >= player.trailUpdateFrequency) {
         player.trailUpdateCounter = 0;
-        player.trailPositions.unshift({ x: player.x, y: player.y, facing: player.facing || 1 });
+        const animationState = getPlayerAnimationState();
+        player.trailPositions.unshift({
+            x: player.x,
+            y: player.y,
+            facing: player.facing || 1,
+            animationState,
+            animationFrame: getPlayerAnimationFrame(animationState)
+        });
         if (player.trailPositions.length > player.maxTrailLength) {
             player.trailPositions.pop();
         }
@@ -318,6 +355,7 @@ function update(dt) {
     let landedOnMiddle = false;
     player.isGrounded = false; // Assume not grounded this frame
     let currentLandingPlatform = null; // Platform landed on *this* frame
+    let landingScorePopup = null;
 
     // Apply vertical movement from the platform the player *was* on
     if (player.groundedOnPlatform) {
@@ -429,13 +467,14 @@ function update(dt) {
                         }
                         state.setScore(state.getScore() + scoreAwarded);
                         const comboSuffix = landedOnMiddle && comboInfo.multiplier > 1 ? ` x${comboInfo.multiplier}` : '';
-                        state.addScorePopup({
+                        landingScorePopup = {
                             x: player.x + player.width / 2, // Start at player center
                             y: player.y - 5, // Start slightly above player
                             text: `+${scoreAwarded}${comboSuffix}`,
                             creationTime: now,
                             alpha: 0 // Start invisible, fade in
-                        });
+                        };
+                        state.addScorePopup(landingScorePopup);
                     }
                     // Spawn next platform check
                     let isHighest = true;
@@ -462,7 +501,10 @@ function update(dt) {
             type: 'landing',
             middle: landedOnMiddle,
             time: state.getElapsedTime(),
-            platformId: currentLandingPlatform?.id ?? null
+            platformId: currentLandingPlatform?.id ?? null,
+            scoreText: landingScorePopup?.text || '',
+            xRatio: landingScorePopup ? landingScorePopup.x / graphics.canvas.width : null,
+            yRatio: landingScorePopup ? landingScorePopup.y / graphics.canvas.height : null
         });
         audio.playLandingSound(landedOnMiddle);
     }

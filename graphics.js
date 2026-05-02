@@ -1,9 +1,9 @@
 // This file will handle graphics, drawing, and canvas resizing
 
-import { R64 } from './constants.js?v=mobile-portrait-29';
-import * as state from './state.js?v=mobile-portrait-29';
-import { player } from './entities.js?v=mobile-portrait-29'; // Need player for drawing
-import * as ui from './ui.js?v=mobile-portrait-29'; // Import ui module
+import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-46';
+import * as state from './state.js?v=mobile-portrait-46';
+import { player } from './entities.js?v=mobile-portrait-46'; // Need player for drawing
+import * as ui from './ui.js?v=mobile-portrait-46'; // Import ui module
 
 // --- Canvas Setup ---
 export const canvas = document.getElementById('gameCanvas');
@@ -74,9 +74,19 @@ canvas.addEventListener('click', (event) => {
 
 const spriteSources = {
     player: 'Sprites/game/player.png?v=sprite-forge-1',
+    playerSheet: 'Sprites/game/player-sheet.png?v=player-anim-1',
     normal: 'Sprites/game/platform-normal.png?v=sprite-forge-1',
     ice: 'Sprites/game/platform-ice.png?v=sprite-forge-1',
     moving: 'Sprites/game/platform-moving.png?v=sprite-forge-1'
+};
+
+const PLAYER_ANIMATION = {
+    frameWidth: 70,
+    frameHeight: 110,
+    idle: { start: 0, frames: 1, fps: 1 },
+    walk: { start: 1, frames: 4, fps: 10 },
+    jump: { start: 5, frames: 1, fps: 1 },
+    fall: { start: 6, frames: 1, fps: 1 }
 };
 
 const sprites = Object.fromEntries(
@@ -264,12 +274,14 @@ function drawHUD(player) {
     ctx.textBaseline = 'middle';
     ctx.fillText(meterText, meterX, meterY);
 
-    if (state.getElapsedTime() < 9000 && state.getScore() < 30) {
+    const controlHint = window.__cosmicZipGetControlHint?.()
+        || (document.body?.classList.contains('mobile-viewport') ? '' : 'A/D MOVE   SPACE JUMP   Q/E DASH   ESC PAUSE');
+    if (controlHint && state.getElapsedTime() < 9000 && state.getScore() < 30) {
         ctx.fillStyle = 'rgba(199, 220, 208, 0.88)';
         ctx.font = '18px Petitinho';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.fillText('A/D MOVE   SPACE JUMP   Q/E DASH   ESC PAUSE', canvas.width / 2, canvas.height - 22);
+        ctx.fillText(controlHint, canvas.width / 2, canvas.height - 22, canvas.width - 40);
     }
 
     const comboMultiplier = state.getComboMultiplier();
@@ -383,22 +395,46 @@ function getPlayerSpriteDrawBox(x, y, sizeScale = 1) {
     };
 }
 
-function drawPlayerSpriteAt(x, y, facing = 1, alpha = 1, tint = null, sizeScale = 1) {
+function getPlayerAnimationState(playerLike) {
+    if (!playerLike?.isGrounded) {
+        return playerLike?.velocityY < 0 ? 'jump' : 'fall';
+    }
+    return Math.abs(playerLike?.velocityX || 0) > 0.35 ? 'walk' : 'idle';
+}
+
+function getPlayerAnimationFrame(animationState = 'idle', timeMs = performance.now()) {
+    const animation = PLAYER_ANIMATION[animationState] || PLAYER_ANIMATION.idle;
+    return animation.start + Math.floor((timeMs / 1000) * animation.fps) % animation.frames;
+}
+
+function drawPlayerSpriteAt(x, y, facing = 1, alpha = 1, tint = null, sizeScale = 1, animationState = 'idle', animationFrame = null) {
     const box = getPlayerSpriteDrawBox(x, y, sizeScale);
+    const frameIndex = Number.isFinite(animationFrame)
+        ? animationFrame
+        : getPlayerAnimationFrame(animationState);
 
     ctx.save();
     ctx.globalAlpha = alpha;
-    if (tint && isSpriteReady(sprites.player)) {
+    const sprite = isSpriteReady(sprites.playerSheet) ? sprites.playerSheet : sprites.player;
+    if (tint && isSpriteReady(sprite)) {
         ctx.filter = 'brightness(0.5) saturate(0.75)';
     }
 
-    if (isSpriteReady(sprites.player)) {
+    if (isSpriteReady(sprite)) {
         if (facing < 0) {
             ctx.translate(box.x + box.width, box.y);
             ctx.scale(-1, 1);
-            ctx.drawImage(sprites.player, 0, 0, box.width, box.height);
+            if (sprite === sprites.playerSheet) {
+                ctx.drawImage(sprite, frameIndex * PLAYER_ANIMATION.frameWidth, 0, PLAYER_ANIMATION.frameWidth, PLAYER_ANIMATION.frameHeight, 0, 0, box.width, box.height);
+            } else {
+                ctx.drawImage(sprite, 0, 0, box.width, box.height);
+            }
         } else {
-            ctx.drawImage(sprites.player, box.x, box.y, box.width, box.height);
+            if (sprite === sprites.playerSheet) {
+                ctx.drawImage(sprite, frameIndex * PLAYER_ANIMATION.frameWidth, 0, PLAYER_ANIMATION.frameWidth, PLAYER_ANIMATION.frameHeight, box.x, box.y, box.width, box.height);
+            } else {
+                ctx.drawImage(sprite, box.x, box.y, box.width, box.height);
+            }
         }
     } else {
         ctx.fillStyle = tint || player.color;
@@ -561,7 +597,7 @@ function drawGameOver() {
             const score = entry.score !== undefined ? entry.score.toString() : 'N/A'; // Convert score to string
             const maxHeight = entry.maxHeight !== undefined ? `${Math.round(entry.maxHeight)} M` : 'N/A'; // Round height
             const time = entry.time || 'N/A';
-            const hasReplay = entry.replay && Array.isArray(entry.replay.samples) && entry.replay.samples.length > 0;
+            const hasReplay = state.hasReplayData(entry.replay);
 
             // Highlight the last submitted score
             const lastScore = state.getLastSubmittedScore();
@@ -721,7 +757,7 @@ function drawCompactGameOver() {
             const score = entry.score !== undefined ? String(entry.score) : '-';
             const maxHeight = entry.maxHeight !== undefined ? `${Math.round(entry.maxHeight)}` : '-';
             const time = entry.time || '-';
-            const hasReplay = entry.replay && Array.isArray(entry.replay.samples) && entry.replay.samples.length > 0;
+            const hasReplay = state.hasReplayData(entry.replay);
 
             ctx.fillStyle = R64.WHITE;
             ctx.textAlign = 'left';
@@ -770,13 +806,13 @@ function drawPlayer(player) {
             const pos = player.trailPositions[i];
             // Fade the trail out the older it gets
             const alpha = maxAlpha * (1 - (i / player.maxTrailLength));
-            drawPlayerSpriteAt(pos.x, pos.y, pos.facing || player.facing || 1, alpha, null);
+        drawPlayerSpriteAt(pos.x, pos.y, pos.facing || player.facing || 1, alpha, null, 1, pos.animationState || 'idle', pos.animationFrame);
         }
         ctx.globalAlpha = 1.0; // Reset alpha for the main player
     }
 
     // --- Draw Main Player (on top) ---
-    drawPlayerSpriteAt(player.x, player.y, player.facing || 1, 1, null);
+    drawPlayerSpriteAt(player.x, player.y, player.facing || 1, 1, null, 1, getPlayerAnimationState(player));
 }
 
 function drawPlatform(platform) {
@@ -798,7 +834,12 @@ function drawPlatform(platform) {
     ctx.globalAlpha = 1.0;
 }
 
-function getReplayPlatformPosition(platform, timeMs) {
+function getReplayPlatformPosition(platform, timeMs, sample = null) {
+    const snapshot = sample?.platformSnapshots?.find(item => item.id === platform.id);
+    if (snapshot) {
+        return { x: snapshot.x, y: snapshot.y, replayHeight: platform.height };
+    }
+
     let x = platform.x;
     let replayHeight = platform.height;
     const movement = platform.movement;
@@ -818,15 +859,52 @@ function getReplayPlatformPosition(platform, timeMs) {
     return { x, replayHeight };
 }
 
+function drawReplayScorePopups(viewer, view) {
+    const events = state.getReplayEventsForCurrentViewer();
+    const sourceWidth = view.sourceWidth;
+    const sourceHeight = view.sourceHeight;
+    const scaleX = view.scaleX;
+    const scaleY = view.scaleY;
+
+    ctx.save();
+    ctx.font = `${Math.max(14, 18 * view.spriteScale)}px Petitinho`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    events.forEach(event => {
+        if (event.type !== 'landing' || !event.scoreText) return;
+        if (!Number.isFinite(Number(event.xRatio)) || !Number.isFinite(Number(event.yRatio))) return;
+
+        const age = viewer.time - (event.time || 0);
+        if (age < 0 || age > SCORE_POPUP_LIFETIME) return;
+
+        let alpha = 1;
+        if (age < SCORE_POPUP_FADE_DURATION) {
+            alpha = age / SCORE_POPUP_FADE_DURATION;
+        } else if (age > SCORE_POPUP_LIFETIME - SCORE_POPUP_FADE_DURATION) {
+            alpha = (SCORE_POPUP_LIFETIME - age) / SCORE_POPUP_FADE_DURATION;
+        }
+
+        const x = view.x + Number(event.xRatio) * sourceWidth * scaleX;
+        const y = view.y + Number(event.yRatio) * sourceHeight * scaleY - SCORE_POPUP_SPEED * (age / 1000) * 60 * scaleY;
+        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+        ctx.fillStyle = event.middle ? R64.YELLOW : R64.WHITE;
+        ctx.fillText(String(event.scoreText).slice(0, 16), x, y);
+    });
+    ctx.restore();
+    ctx.globalAlpha = 1;
+}
+
 function getReplayView(replay) {
     const sourceWidth = Math.max(1, replay.canvasWidth || canvas.width);
     const sourceHeight = Math.max(1, replay.canvasHeight || canvas.height);
+    const isPhoneViewer = document.body?.classList.contains('mobile-viewport') ||
+        (window.matchMedia?.('(pointer: coarse)').matches && canvas.height >= canvas.width && Math.min(canvas.width, canvas.height) <= 900);
     const sourceLooksMobile = sourceHeight > sourceWidth * 1.12 && sourceWidth <= 900;
     const isMobileReplay = replay.isMobileRun === true ||
         replay.viewportProfile === 'mobile' ||
         sourceLooksMobile;
 
-    if (!isMobileReplay) {
+    if (!isMobileReplay || isPhoneViewer) {
         return {
             x: 0,
             y: 0,
@@ -837,7 +915,7 @@ function getReplayView(replay) {
             scaleX: canvas.width / sourceWidth,
             scaleY: canvas.height / sourceHeight,
             spriteScale: Math.min(canvas.width / sourceWidth, canvas.height / sourceHeight),
-            isMobileReplay: false,
+            isMobileReplay,
             isLetterboxed: false
         };
     }
@@ -918,6 +996,78 @@ function drawReplayFallbackPlatform(view, sample, playerX, playerY, playerDrawWi
     });
 }
 
+function getReplayPlayerScreenPosition(
+    replaySample,
+    view,
+    spriteScale,
+    replayPlatformScreenX = null,
+    replayPlatformScreenY = null,
+    replayPlatformData = null
+) {
+    const sourceWidth = view.sourceWidth;
+    const sourceHeight = view.sourceHeight;
+    const scaleX = view.scaleX;
+    const scaleY = view.scaleY;
+    const playerDrawWidth = player.width * spriteScale;
+    const playerDrawHeight = player.height * spriteScale;
+    let x = view.x + replaySample.xRatio * sourceWidth * scaleX - playerDrawWidth / 2;
+    let y = view.y + (replaySample.yRatio ?? 0.4) * sourceHeight * scaleY - playerDrawHeight / 2;
+
+    const compactReplay = isCompactHUD() || view.width < 720;
+    if (compactReplay) {
+        const topSafe = view.y + 96 * scaleY;
+        const bottomSafe = Math.max(topSafe + 60 * scaleY, view.y + view.height - 220 * scaleY);
+        y = Math.max(topSafe, Math.min(bottomSafe, y));
+    }
+
+    if (
+        replaySample.groundedPlatformId !== null &&
+        replayPlatformScreenY?.has(replaySample.groundedPlatformId)
+    ) {
+        const groundedPlatform = replayPlatformData?.get(replaySample.groundedPlatformId);
+        const groundedX = replayPlatformScreenX?.get(replaySample.groundedPlatformId);
+        const offsetRatio = Number.isFinite(replaySample.groundedOffsetRatio) ? replaySample.groundedOffsetRatio : 0.5;
+        if (groundedPlatform && Number.isFinite(groundedX)) {
+            x = groundedX + groundedPlatform.width * scaleX * offsetRatio - playerDrawWidth / 2;
+        }
+        y = replayPlatformScreenY.get(replaySample.groundedPlatformId) - playerDrawHeight - 1;
+    }
+
+    return { x, y, width: playerDrawWidth, height: playerDrawHeight };
+}
+
+function drawReplayPlayerTrail(viewer, view, spriteScale, replayPlatformScreenX, replayPlatformScreenY, replayPlatformData) {
+    const trailOffsets = [360, 260, 170, 90];
+    trailOffsets.forEach((offset, index) => {
+        const trailTime = viewer.time - offset;
+        if (trailTime <= 0) return;
+
+        const trailSample = state.getReplaySampleAt(trailTime);
+        if (!trailSample || trailSample.visible === false) return;
+
+        const trailPosition = getReplayPlayerScreenPosition(
+            trailSample,
+            view,
+            spriteScale,
+            replayPlatformScreenX,
+            replayPlatformScreenY,
+            replayPlatformData
+        );
+        if (trailPosition.y < view.y - player.height || trailPosition.y > view.y + view.height + player.height) return;
+
+        drawPlayerSpriteAt(
+            trailPosition.x,
+            trailPosition.y,
+            trailSample.facing || 1,
+            0.08 + index * 0.04,
+            '#2b8cc9',
+            spriteScale,
+            trailSample.animationState || 'idle',
+            trailSample.animationFrame
+        );
+    });
+}
+
 function drawReplay() {
     const viewer = state.getReplayViewer();
     const sample = state.getReplaySampleAt(viewer?.time || 0);
@@ -932,16 +1082,11 @@ function drawReplay() {
     const scaleX = view.scaleX;
     const scaleY = view.scaleY;
     const spriteScale = Math.max(0.35, view.spriteScale || 1);
-    const playerDrawWidth = player.width * spriteScale;
-    const playerDrawHeight = player.height * spriteScale;
-    let playerX = view.x + sample.xRatio * sourceWidth * scaleX - playerDrawWidth / 2;
-    let playerY = view.y + (sample.yRatio ?? 0.4) * sourceHeight * scaleY - playerDrawHeight / 2;
-    const compactReplay = isCompactHUD() || view.width < 720;
-    if (compactReplay) {
-        const topSafe = view.y + 96 * scaleY;
-        const bottomSafe = Math.max(topSafe + 60 * scaleY, view.y + view.height - 220 * scaleY);
-        playerY = Math.max(topSafe, Math.min(bottomSafe, playerY));
-    }
+    const basePlayerPosition = getReplayPlayerScreenPosition(sample, view, spriteScale);
+    const playerDrawWidth = basePlayerPosition.width;
+    const playerDrawHeight = basePlayerPosition.height;
+    let playerX = basePlayerPosition.x;
+    let playerY = basePlayerPosition.y;
     const cameraDrop = (sample.cameraDrop || 0) * scaleY;
     const replayPlatformScreenY = new Map();
     const replayPlatformScreenX = new Map();
@@ -956,8 +1101,10 @@ function drawReplay() {
         if (replayPlatform.time > viewer.time + 200) return;
         if (isReplayPlatformTooOld(replayPlatform, sample, viewer.time)) return;
 
-        const moved = getReplayPlatformPosition(replayPlatform, viewer.time);
-        const platformY = playerY + playerDrawHeight + (sample.height - moved.replayHeight) * 10 * scaleY - cameraDrop;
+        const moved = getReplayPlatformPosition(replayPlatform, viewer.time, sample);
+        const platformY = Number.isFinite(moved.y)
+            ? view.y + moved.y * scaleY
+            : playerY + playerDrawHeight + (sample.height - moved.replayHeight) * 10 * scaleY - cameraDrop;
         const platformX = view.x + moved.x * scaleX;
         replayPlatformScreenY.set(replayPlatform.id, platformY);
         replayPlatformScreenX.set(replayPlatform.id, platformX);
@@ -981,25 +1128,22 @@ function drawReplay() {
         visiblePlatformCount++;
     });
 
-    if (sample.groundedPlatformId !== null && replayPlatformScreenY.has(sample.groundedPlatformId)) {
-        const groundedPlatform = replayPlatformData.get(sample.groundedPlatformId);
-        const groundedX = replayPlatformScreenX.get(sample.groundedPlatformId);
-        const offsetRatio = Number.isFinite(sample.groundedOffsetRatio) ? sample.groundedOffsetRatio : 0.5;
-        if (groundedPlatform && Number.isFinite(groundedX)) {
-            playerX = groundedX + groundedPlatform.width * scaleX * offsetRatio - playerDrawWidth / 2;
-        }
-        playerY = replayPlatformScreenY.get(sample.groundedPlatformId) - playerDrawHeight - 1;
-    }
+    const playerPosition = getReplayPlayerScreenPosition(sample, view, spriteScale, replayPlatformScreenX, replayPlatformScreenY, replayPlatformData);
+    playerX = playerPosition.x;
+    playerY = playerPosition.y;
 
     if (sample.visible !== false) {
         if (visiblePlatformCount === 0) {
             drawReplayFallbackPlatform(view, sample, playerX, playerY, playerDrawWidth, playerDrawHeight);
         }
-        drawPlayerSpriteAt(playerX, playerY, sample.facing || 1, 1, null, spriteScale);
+        drawReplayPlayerTrail(viewer, view, spriteScale, replayPlatformScreenX, replayPlatformScreenY, replayPlatformData);
+        drawPlayerSpriteAt(playerX, playerY, sample.facing || 1, 1, null, spriteScale, sample.animationState || 'idle', sample.animationFrame);
+        drawReplayScorePopups(viewer, view);
     }
     drawDeathParticles();
     ctx.restore();
 
+    const compactReplay = isCompactHUD() || view.width < 720;
     const edge = compactReplay ? 12 : 20;
     const replayFont = compactReplay ? Math.min(17, Math.max(13, Math.round(view.width * 0.04))) : 20;
     const replayLineHeight = compactReplay ? Math.round(replayFont * 1.55) : 28;
