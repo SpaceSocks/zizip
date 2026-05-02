@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-57';
-import * as graphics from './graphics.js?v=mobile-portrait-57';
-import * as input from './input.js?v=mobile-portrait-57';
-import * as audio from './audio.js?v=mobile-portrait-57';
-import { player, createPlatform } from './entities.js?v=mobile-portrait-57';
-import * as ui from './ui.js?v=mobile-portrait-57'; // Import UI
+import * as state from './state.js?v=mobile-portrait-58';
+import * as graphics from './graphics.js?v=mobile-portrait-58';
+import * as input from './input.js?v=mobile-portrait-58';
+import * as audio from './audio.js?v=mobile-portrait-58';
+import { player, createPlatform } from './entities.js?v=mobile-portrait-58';
+import * as ui from './ui.js?v=mobile-portrait-58'; // Import UI
 import {
     MIN_VERT_GAP, MAX_VERT_GAP, PLATFORM_START_WIDTH, PLATFORM_EARLY_MIN_WIDTH, PLATFORM_MIN_WIDTH,
     PLATFORM_WIDTH_DIFFICULTY_HEIGHT, PLAYER_GRAVITY, PLAYER_JUMP_POWER, PLAYER_SPEED,
@@ -12,7 +12,7 @@ import {
     PLATFORM_PROBABILITY, PLATFORM_MIDDLE_THRESHOLD,
     PLATFORM_FLASH_DURATION, PLATFORM_FLASH_INTERVAL_MAX, PLATFORM_FLASH_INTERVAL_MIN,
     PLATFORM_FLASH_START_DELAY, PLAYER_AIR_CONTROL_FACTOR
-} from './constants.js?v=mobile-portrait-57';
+} from './constants.js?v=mobile-portrait-58';
 
 // --- Game Variables ---
 let animationFrameId = null;
@@ -194,6 +194,14 @@ function getPlatformWidthForDifficulty(difficulty) {
     const widestAllowed = Math.round(PLATFORM_START_WIDTH - 22 * eased);
     const bias = Math.pow(Math.random(), 1.4 + (1 - difficulty) * 1.8);
     return Math.round(smallestAllowed + (widestAllowed - smallestAllowed) * bias);
+}
+
+function getMovingPlatformSpeedForDifficulty(difficulty) {
+    const eased = difficulty * difficulty * (3 - 2 * difficulty);
+    const minSpeed = 52 + eased * 26;
+    const maxSpeed = 76 + eased * 66;
+    const speed = minSpeed + Math.random() * (maxSpeed - minSpeed);
+    return Math.round(speed);
 }
 
 function getMobilePhysicsScale() {
@@ -821,7 +829,10 @@ function spawnNewPlatform(basePlatform) {
     }
 
     // Create the platform with the validated/final newX
-    const newPlatform = createPlatform(newX, newY, platformType, newWidth); // Pass width too
+    const platformOptions = platformType === 'moving'
+        ? { movingSpeed: getMovingPlatformSpeedForDifficulty(difficulty) }
+        : {};
+    const newPlatform = createPlatform(newX, newY, platformType, newWidth, false, platformOptions); // Pass width too
     preparePlatformForReplay(newPlatform, (basePlatform.replayHeight || 0) + yOffset / 10);
     state.addPlatform(newPlatform);
 }

@@ -5,7 +5,7 @@
         PLATFORM_BASE_WIDTH, PLATFORM_HEIGHT, PLATFORM_MIDDLE_THRESHOLD,
         MOVING_PLATFORM_SPEED,
         PLATFORM_FLASH_INTERVAL_MAX
-    } from './constants.js?v=mobile-portrait-57';
+    } from './constants.js?v=mobile-portrait-58';
 
     // --- Player Definition ---
     export const player = {
@@ -42,7 +42,7 @@
     let platformIdCounter = 0; // NEW: Counter for unique platform IDs
 
     // --- Platform Creation Function ---
-    export function createPlatform(x, y, type = 'normal', width = PLATFORM_BASE_WIDTH, isStarting = false) { // Added isStarting parameter
+    export function createPlatform(x, y, type = 'normal', width = PLATFORM_BASE_WIDTH, isStarting = false, options = {}) { // Added isStarting parameter
         console.log(`createPlatform called: x=${x}, y=${y}, type=${type}, width=${width}, isStarting=${isStarting}`); // LOG PARAMETERS
         const friction = (type === 'ice') ? 0.01 : 0.1;
         let color, middleColor, movement = null; // Add movement property
@@ -63,13 +63,14 @@
             // Randomly choose axis
             const axis = Math.random() < 0.5 ? 'x' : 'y'; 
             const range = (axis === 'x') ? 150 : 80; // Different range for x vs y? Adjust as needed
+            const speed = Number.isFinite(options.movingSpeed) ? options.movingSpeed : MOVING_PLATFORM_SPEED;
 
-            console.log(`Moving platform axis: ${axis}, range: ${range}`);
+            console.log(`Moving platform axis: ${axis}, range: ${range}, speed: ${speed}`);
 
             movement = {
                 axis: axis, // <<< STORE AXIS
                 direction: Math.random() < 0.5 ? 1 : -1, 
-                speed: MOVING_PLATFORM_SPEED, 
+                speed: speed,
                 range: range
             };
         } else { // Normal platform
