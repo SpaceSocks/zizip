@@ -595,24 +595,38 @@ body.game-screen-active {
 .leaderboard-source-toggle {
     display: flex;
     justify-content: center;
-    gap: 8px;
+    gap: 12px;
     margin: 0 auto 14px;
 }
 
 .source-toggle-button {
-    min-width: 104px;
-    padding: 9px 14px;
-    border: 1px solid rgba(199, 220, 208, 0.22);
+    min-width: 118px;
+    padding: 10px 22px;
+    border: none;
     border-radius: 5px;
-    background: rgba(17, 17, 24, 0.35);
-    color: #c7dcd0;
+    background-color: #c7dcd0;
+    color: #3e3546;
     cursor: pointer;
+    font-family: 'Petitinho', sans-serif;
+    font-size: 1.05rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.source-toggle-button:hover {
+    background-color: #ffffff;
+    transform: scale(1.02);
+}
+
+.source-toggle-button:active {
+    transform: scale(0.98);
 }
 
 .source-toggle-button.active {
-    border-color: rgba(143, 211, 255, 0.75);
-    background: rgba(143, 211, 255, 0.18);
-    color: #ffffff;
+    background-color: #ffffff;
+    color: #3e3546;
+    outline: 3px solid #f9c22b;
+    box-shadow: 0 0 10px #f9c22b;
 }
 
 .menu-leaderboard-list {
