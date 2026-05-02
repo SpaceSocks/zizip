@@ -525,10 +525,15 @@ body.game-screen-active {
     place-items: center;
     width: 24px;
     height: 24px;
-    border-radius: 50%;
-    background: #ffffff;
-    color: #111318;
-    font: 700 15px var(--game-font);
+    overflow: hidden;
+    background: transparent;
+}
+
+.apple-mark img {
+    display: block;
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
 }
 
 .menu-actions {
