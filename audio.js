@@ -1,4 +1,4 @@
-import * as state from './state.js?v=mobile-portrait-80';
+import * as state from './state.js?v=mobile-portrait-81';
 // import { player } from './entities.js'; // No longer needed here
 
 // This file will handle audio initialization and playback 
@@ -14,6 +14,8 @@ let sfxGainNode;
 let musicSourceNode;
 let musicGainNode;
 let sfxBufferLoadPromise = null;
+let musicPreloadPromise = null;
+let musicPreloadTrack = '';
 const sfxBuffers = new Map();
 
 // Store all SFX players for easier volume control
@@ -44,7 +46,8 @@ const sfxPlayerDeathPath = 'Audio/SFX/PlayerDeath.wav';
 const SFX_DEFINITIONS = {
     land: sfxLandPath,
     middleLand: sfxMiddleLandPath,
-    gameOver: sfxGameOverPath
+    gameOver: sfxGameOverPath,
+    playerDeath: sfxPlayerDeathPath
 };
 
 function getAudioContext() {
@@ -126,6 +129,50 @@ function ensureSfxBuffersLoading() {
     return sfxBufferLoadPromise;
 }
 
+function ensurePlaylistReady() {
+    if (shuffledTracks.length > 0) return;
+    shuffledTracks = [...musicTracks];
+    shuffleArray(shuffledTracks);
+    currentTrackIndex = 0;
+}
+
+function preloadMusicTrack(trackName) {
+    if (!trackName) return Promise.resolve(false);
+    if (musicPreloadTrack === trackName && musicPreloadPromise) return musicPreloadPromise;
+
+    const trackPath = `Audio/Music/${trackName}.mp3`;
+    musicPreloadTrack = trackName;
+    musicPreloadPromise = fetch(trackPath, { cache: 'force-cache' })
+        .then(response => {
+            if (!response.ok) throw new Error(`Could not preload ${trackPath}: ${response.status}`);
+            return response.blob();
+        })
+        .then(() => true)
+        .catch(error => {
+            console.warn(`Music preload failed for ${trackName}.`, error);
+            return false;
+        });
+    return musicPreloadPromise;
+}
+
+function preloadCurrentMusicTrack() {
+    ensurePlaylistReady();
+    const trackName = shuffledTracks[currentTrackIndex];
+    if (musicPlayer && trackName) {
+        const trackPath = `Audio/Music/${trackName}.mp3`;
+        if (!musicPlayer.src || !musicPlayer.src.endsWith(trackPath)) {
+            musicPlayer.src = trackPath;
+            musicPlayer.preload = 'auto';
+            try {
+                musicPlayer.load();
+            } catch (error) {
+                console.warn(`Could not start music element preload for ${trackName}.`, error);
+            }
+        }
+    }
+    return preloadMusicTrack(trackName);
+}
+
 function playBufferedSfx(name) {
     if (!state.getAudioInitialized()) return false;
     const context = getAudioContext();
@@ -154,6 +201,22 @@ function playFallbackAudio(player, label) {
     });
 }
 
+export function warmAudioAssets() {
+    ensurePlaylistReady();
+    ensureSfxBuffersLoading();
+    preloadCurrentMusicTrack();
+
+    sfxPlayers.forEach(player => {
+        if (!player) return;
+        player.preload = 'auto';
+        try {
+            player.load();
+        } catch (error) {
+            console.warn("Could not warm SFX element.", error);
+        }
+    });
+}
+
 // --- Audio Setup ---
 export function setupAudioPlayers() {
     musicPlayer = new Audio();
@@ -168,7 +231,17 @@ export function setupAudioPlayers() {
 
     // Assign initial volume and add to array
     sfxPlayers = [sfxLandPlayer, sfxMiddleLandPlayer, sfxGameOverPlayer, sfxPlayerDeathPlayer];
-    sfxPlayers.forEach(player => player.volume = sfxVolume);
+    sfxPlayers.forEach(player => {
+        player.preload = 'auto';
+        player.volume = sfxVolume;
+        try {
+            player.load();
+        } catch (error) {
+            console.warn("Could not start SFX preload.", error);
+        }
+    });
+    ensurePlaylistReady();
+    preloadCurrentMusicTrack();
     getAudioContext();
     setupMusicGainNode();
     ensureSfxBuffersLoading();
@@ -273,11 +346,15 @@ export function playLandingSound(isMiddle = false) {
         return;
     }
 
-    playBufferedSfx('land');
+    if (!playBufferedSfx('land')) {
+        playFallbackAudio(sfxLandPlayer, 'Landing');
+    }
 
     // Play the middle landing sound *additionally* if applicable
     if (isMiddle) {
-        playBufferedSfx('middleLand');
+        if (!playBufferedSfx('middleLand')) {
+            playFallbackAudio(sfxMiddleLandPlayer, 'Middle Landing');
+        }
     }
 }
 
@@ -315,10 +392,7 @@ export function startMusic() {
         return;
     }
 
-    if (shuffledTracks.length === 0) {
-        console.error("No music tracks shuffled or available.");
-        return;
-    }
+    ensurePlaylistReady();
 
     currentTrackName = shuffledTracks[currentTrackIndex];
     const trackPath = `Audio/Music/${currentTrackName}.mp3`;
@@ -326,12 +400,16 @@ export function startMusic() {
 
     if (!musicPlayer.src || !musicPlayer.src.endsWith(trackPath)) {
         musicPlayer.src = trackPath;
+        musicPlayer.preload = 'auto';
+        musicPlayer.load();
     }
     setupMusicGainNode();
     applyMusicVolume();
     musicPlayer.play().then(() => {
         console.log(`musicPlayer.play() promise resolved for ${currentTrackName}.`);
         state.setCurrentTrackInfo(currentTrackName); // Update state for HUD
+        const nextTrack = shuffledTracks[(currentTrackIndex + 1) % shuffledTracks.length];
+        preloadMusicTrack(nextTrack);
     }).catch(e => {
         console.error(`Error caught during musicPlayer.play() for ${currentTrackName}:`, e);
         // Maybe try next track on error?
@@ -350,6 +428,7 @@ export function initializeAudio() {
                 console.warn("Audio context resume blocked until user interaction:", err);
             });
         }
+        warmAudioAssets();
         if (musicPlayer && musicPlayer.paused) {
             startMusic();
         }
@@ -375,12 +454,9 @@ export function initializeAudio() {
         if (!state.getAudioInitialized()) {
             state.setAudioInitialized(true);
             console.log("Audio context unlocked.");
-            ensureSfxBuffersLoading();
+            warmAudioAssets();
 
             // Shuffle and start the first track immediately after unlock
-            shuffledTracks = [...musicTracks]; // Copy original list
-            shuffleArray(shuffledTracks);
-            currentTrackIndex = 0;
             console.log("Music playlist shuffled:", shuffledTracks);
             startMusic(); 
         }
