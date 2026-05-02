@@ -523,16 +523,17 @@ body.game-screen-active {
 .apple-mark {
     display: inline-grid;
     place-items: center;
-    width: 32px;
-    height: 32px;
+    width: 54px;
+    height: 54px;
     overflow: hidden;
     background: transparent;
+    margin: -12px -6px;
 }
 
 .apple-mark img {
     display: block;
-    width: 32px;
-    height: 32px;
+    width: 54px;
+    height: 54px;
     object-fit: contain;
 }
 
