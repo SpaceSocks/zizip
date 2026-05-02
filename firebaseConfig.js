@@ -5,7 +5,7 @@ const productionAuthHostnames = new Set([
 ]);
 
 const authDomain = productionAuthHostnames.has(window.location.hostname)
-  ? "cosmiczip.net"
+  ? window.location.hostname
   : "zipzip-d8d69.firebaseapp.com";
 
 const firebaseConfig = {
