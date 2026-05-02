@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-81';
-import * as audio from './audio.js?v=mobile-portrait-81'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-82';
+import * as audio from './audio.js?v=mobile-portrait-82'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-81';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-82';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-81';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-82';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -693,13 +693,33 @@ function hideGoogleAliasPrompt() {
 function shouldUseGoogleRedirect() {
     const isTouch = window.matchMedia?.('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
     const isMobileViewport = document.body?.classList.contains('mobile-viewport');
-    const userAgent = navigator.userAgent || '';
-    const isEmbeddedBrowser = /FBAN|FBAV|Instagram|Line|Messenger|wv|WebView/i.test(userAgent);
-    return isMobileViewport || isTouch || isEmbeddedBrowser;
+    return isMobileViewport || isTouch || isEmbeddedOAuthBrowser();
 }
 
 function shouldUseProviderRedirect() {
     return shouldUseGoogleRedirect();
+}
+
+function isEmbeddedOAuthBrowser() {
+    const userAgent = navigator.userAgent || '';
+    return /FBAN|FBAV|FBIOS|FB_IAB|Messenger|Instagram|Line|MicroMessenger|TikTok|Snapchat|Twitter|LinkedInApp|Pinterest|;\s*wv\)|\bwv\b|WebView/i.test(userAgent);
+}
+
+function getExternalBrowserSignInMessage(providerLabel = 'Google') {
+    const host = window.location?.host || 'cosmiczip.net';
+    return `${providerLabel} sign-in is blocked inside this in-app browser. Open ${host} in Safari, Chrome, Firefox, or Edge, then sign in.`;
+}
+
+function shouldBlockProviderInThisBrowser(providerId) {
+    return providerId === 'google' && isEmbeddedOAuthBrowser();
+}
+
+function isDisallowedUserAgentError(error) {
+    const tokenError = error?.customData?._tokenResponse?.error || '';
+    const text = `${error?.code || ''} ${error?.message || ''} ${tokenError}`.toLowerCase();
+    return text.includes('disallowed_useragent') ||
+        text.includes('use secure browsers') ||
+        text.includes('secure browser');
 }
 
 function getPendingRedirectProvider() {
@@ -1159,6 +1179,14 @@ async function handleAuthClick() {
 
 async function startProviderSignIn(providerLabel, providerId, providerFactory) {
     hideGoogleAliasPrompt();
+
+    if (shouldBlockProviderInThisBrowser(providerId)) {
+        infoText.textContent = getExternalBrowserSignInMessage(providerLabel);
+        authButton.disabled = false;
+        setProviderSignInButtonsDisabled(false);
+        return;
+    }
+
     setProviderSignInButtonsDisabled(true);
     authButton.disabled = true;
     requestMobileFullscreen();
@@ -1273,6 +1301,10 @@ async function handleGoogleAliasSaveClick() {
 
 // Helper to provide user-friendly error messages
 function getFirebaseAuthErrorMessage(error) {
+    if (isDisallowedUserAgentError(error)) {
+        return getExternalBrowserSignInMessage('Google');
+    }
+
     if (!error || !error.code) {
         return 'Online login unavailable. Use Play Local to start now.';
     }
