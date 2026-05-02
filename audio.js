@@ -1,4 +1,4 @@
-import * as state from './state.js?v=mobile-portrait-48';
+import * as state from './state.js?v=mobile-portrait-49';
 // import { player } from './entities.js'; // No longer needed here
 
 // This file will handle audio initialization and playback 
