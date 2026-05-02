@@ -1,9 +1,9 @@
 // This file will handle graphics, drawing, and canvas resizing
 
-import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-49';
-import * as state from './state.js?v=mobile-portrait-49';
-import { player } from './entities.js?v=mobile-portrait-49'; // Need player for drawing
-import * as ui from './ui.js?v=mobile-portrait-49'; // Import ui module
+import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-50';
+import * as state from './state.js?v=mobile-portrait-50';
+import { player } from './entities.js?v=mobile-portrait-50'; // Need player for drawing
+import * as ui from './ui.js?v=mobile-portrait-50'; // Import ui module
 
 // --- Canvas Setup ---
 export const canvas = document.getElementById('gameCanvas');

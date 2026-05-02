@@ -324,10 +324,11 @@ body.game-screen-active {
     display: flex;
     align-items: center;
     gap: 12px;
-    color: #9babb2;
+    color: #f9c22b;
     font-size: 0.9em;
     text-align: center;
     white-space: nowrap;
+    text-transform: uppercase;
 }
 
 .auth-divider::before,
