@@ -239,13 +239,13 @@ body.game-screen-active {
     justify-content: center;
     background:
         linear-gradient(180deg, rgba(62, 53, 70, 0.90), rgba(46, 34, 47, 0.92));
-    padding: 26px 40px 24px;
+    padding: 20px 30px 18px;
     border-radius: 10px; /* Old border radius */
-    max-width: 1060px;
-    width: min(94vw, 1060px);
+    max-width: 780px;
+    width: min(86vw, 780px);
     /* Add side borders */
-    border-left: 15px solid #4d9be6; /* Blue border */
-    border-right: 15px solid #4d9be6; /* Blue border */
+    border-left: 11px solid #4d9be6; /* Blue border */
+    border-right: 11px solid #4d9be6; /* Blue border */
     box-shadow: 0 22px 70px rgba(0, 0, 0, 0.55);
     z-index: 10; /* Ensure login is behind pause */
     position: relative;
@@ -254,9 +254,9 @@ body.game-screen-active {
 }
 
 #loginScreen h1 {
-    font-size: clamp(2.8rem, 6vw, 4.6rem);
+    font-size: clamp(2.35rem, 4.8vw, 3.55rem);
     color: #ffffff; /* White */
-    margin-bottom: 14px;
+    margin-bottom: 10px;
     letter-spacing: 3px;
     text-align: center;
     text-shadow: none; /* Remove previous shadow */
@@ -264,25 +264,25 @@ body.game-screen-active {
 }
 
 .tagline {
-    max-width: 720px;
-    margin: -2px auto 18px;
+    max-width: 590px;
+    margin: -2px auto 14px;
     color: #c7dcd0;
-    font-size: 1.15em;
-    line-height: 1.35;
+    font-size: 0.94em;
+    line-height: 1.28;
     text-align: center;
 }
 
 #authForm {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     width: 100%;
 }
 
 .login-lanes {
     display: grid;
-    grid-template-columns: minmax(270px, 0.9fr) minmax(420px, 1.35fr);
-    gap: 18px;
+    grid-template-columns: minmax(230px, 0.82fr) minmax(330px, 1.18fr);
+    gap: 14px;
     align-items: stretch;
 }
 
@@ -290,9 +290,9 @@ body.game-screen-active {
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
-    gap: 12px;
+    gap: 10px;
     min-width: 0;
-    padding: 16px;
+    padding: 13px;
     border: 1px solid rgba(199, 220, 208, 0.18);
     border-radius: 8px;
     background: rgba(17, 17, 24, 0.28);
@@ -308,7 +308,7 @@ body.game-screen-active {
 }
 
 .online-auth-block {
-    padding: 12px;
+    padding: 10px;
     border: 1px solid rgba(199, 220, 208, 0.16);
     border-radius: 8px;
     background: rgba(42, 33, 48, 0.32);
@@ -317,13 +317,18 @@ body.game-screen-active {
 .google-auth-block {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
 }
 
 .email-auth-block {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
+}
+
+.email-auth-block .input-group label {
+    width: 92px;
+    font-size: 0.96em;
 }
 
 .local-panel .input-group {
@@ -398,12 +403,12 @@ body.game-screen-active {
 #loginScreen input[type="password"] {
     flex-grow: 1; /* Allow input to take remaining space */
     min-width: 0;
-    padding: 13px; /* Old padding */
+    padding: 10px 12px; /* Old padding */
     border: none;
     border-radius: 8px;
     background-color: #3e3546; /* Darker input background */
     color: #c7dcd0; /* Light text color */
-    font-size: 1.1em; /* Old font size */
+    font-size: 0.98em; /* Old font size */
     /* font-family: Petitinho inherited */
     box-shadow: inset 0 2px 5px rgba(0,0,0,0.2); /* Old shadow */
 }
@@ -415,7 +420,7 @@ body.game-screen-active {
 
 #loginScreen input[type="password"] {
     font-family: var(--game-font);
-    font-size: 1.35em;
+    font-size: 1.12em;
     line-height: 1;
 }
 
@@ -447,18 +452,18 @@ body.game-screen-active {
 .button-group {
     display: flex;
     justify-content: center; /* Center buttons */
-    gap: 20px; /* Old gap */
+    gap: 14px; /* Old gap */
     width: 100%;
-    margin-top: 6px; /* Increased top margin */
+    margin-top: 3px; /* Increased top margin */
 }
 
 #loginScreen button {
-    padding: 12px 30px; /* Old padding */
+    padding: 9px 22px; /* Old padding */
     border: none;
     border-radius: 5px; /* Old radius */
     background-color: #c7dcd0; /* Light button background */
     color: #3e3546; /* Dark text color */
-    font-size: 1.1em; /* Old font size */
+    font-size: 0.98em; /* Old font size */
     cursor: pointer;
     transition: background-color 0.2s ease, transform 0.1s ease;
     box-shadow: 0 2px 4px rgba(0,0,0,0.2); /* Old shadow */
@@ -468,10 +473,10 @@ body.game-screen-active {
 
 #loginScreen .primary-action {
     width: 100%;
-    padding: 15px 30px;
+    padding: 12px 24px;
     background: #f9c22b;
     color: #2e222f;
-    font-size: 1.45em;
+    font-size: 1.22em;
     letter-spacing: 1px;
     box-shadow: 0 10px 30px rgba(249, 194, 43, 0.22);
 }
@@ -487,7 +492,7 @@ body.game-screen-active {
     justify-content: center;
     gap: 10px;
     width: 100%;
-    margin-top: 12px;
+    margin-top: 8px;
     border: 1px solid rgba(199, 220, 208, 0.38) !important;
 }
 
@@ -531,35 +536,35 @@ body.game-screen-active {
 .google-mark {
     display: inline-grid;
     place-items: center;
-    width: 24px;
-    height: 24px;
+    width: 21px;
+    height: 21px;
     border-radius: 50%;
     background: conic-gradient(from -45deg, #4285f4 0 25%, #34a853 0 50%, #fbbc05 0 75%, #ea4335 0);
     color: #ffffff;
-    font: 700 15px var(--game-font);
+    font: 700 13px var(--game-font);
 }
 
 .apple-mark {
     display: inline-grid;
     place-items: center;
-    width: 54px;
-    height: 54px;
+    width: 44px;
+    height: 44px;
     overflow: hidden;
     background: transparent;
-    margin: -12px -6px;
+    margin: -10px -5px;
 }
 
 .apple-mark img {
     display: block;
-    width: 54px;
-    height: 54px;
+    width: 44px;
+    height: 44px;
     object-fit: contain;
 }
 
 .menu-actions {
     display: flex;
     justify-content: center;
-    gap: 16px;
+    gap: 12px;
     flex-wrap: wrap;
     width: 100%;
 }
@@ -606,7 +611,7 @@ body.game-screen-active {
 #infoText {
     min-height: 1.2em;
     margin-top: 2px; /* Old margin */
-    font-size: 1em; /* Old font size */
+    font-size: 0.88em; /* Old font size */
     color: #f9c22b; /* Yellow info color */
     text-align: center;
     /* font-family: Petitinho inherited */
@@ -620,7 +625,7 @@ body.game-screen-active {
 .auth-links {
     display: flex;
     justify-content: center;
-    gap: 34px;
+    gap: 28px;
     flex-wrap: wrap;
 }
 
@@ -1014,7 +1019,7 @@ body:has(#loginScreen[style*="display: flex"]) {
 .replay-button {
     padding: 8px 14px;
     min-width: 64px;
-    font-size: 1em;
+    font-size: 0.9em;
 }
 
 #replayTimeline {
@@ -1438,35 +1443,35 @@ input[type=range]::-moz-range-track {
 @media (max-width: 720px) {
     body {
         overflow-y: auto;
-        align-items: flex-start;
+        align-items: center;
     }
 
     #loginScreen {
-        padding: 18px 16px;
-        border-left-width: 8px;
-        border-right-width: 8px;
-        width: 100vw;
-        max-width: none;
-        margin: 0;
-        border-radius: 0;
+        padding: 14px 12px 16px;
+        border-left-width: 6px;
+        border-right-width: 6px;
+        width: min(82vw, 360px);
+        max-width: calc(100vw - 40px);
+        margin: 12px auto;
+        border-radius: 8px;
     }
 
     #loginScreen h1 {
-        font-size: clamp(2.15rem, 14vw, 3.3rem);
+        font-size: clamp(1.65rem, 8.8vw, 2.45rem);
         line-height: 1.03;
-        margin-bottom: 16px;
+        margin-bottom: 10px;
         max-width: 100%;
     }
 
     .tagline {
         max-width: 320px;
-        font-size: 0.82em;
-        line-height: 1.28;
+        font-size: 0.72em;
+        line-height: 1.18;
     }
 
     .login-lanes {
         grid-template-columns: minmax(0, 1fr);
-        gap: 12px;
+        gap: 9px;
     }
 
     .auth-divider {
@@ -1474,17 +1479,18 @@ input[type=range]::-moz-range-track {
     }
 
     .login-panel {
-        padding: 14px;
+        padding: 10px;
+        gap: 8px;
     }
 
     #loginScreen .primary-action {
-        padding: 13px 16px;
-        font-size: 1.18em;
+        padding: 10px 12px;
+        font-size: 1em;
     }
 
     #loginScreen button {
-        padding: 11px 18px;
-        font-size: 1em;
+        padding: 9px 14px;
+        font-size: 0.9em;
     }
 
     .menu-card {
@@ -1513,8 +1519,20 @@ input[type=range]::-moz-range-track {
     }
 
     .button-group {
-        flex-direction: column;
-        gap: 10px;
+        flex-direction: row;
+        gap: 8px;
+    }
+
+    .menu-actions {
+        gap: 8px;
+    }
+
+    #loginScreen .menu-actions button {
+        width: auto;
+        flex: 1 1 0;
+        min-width: 0;
+        padding-inline: 8px;
+        font-size: clamp(0.68rem, 3vw, 0.84rem);
     }
 }
 
@@ -1538,55 +1556,63 @@ body.mobile-viewport {
 }
 
 body.mobile-viewport:not(.game-screen-active) {
+    width: 100vw;
+    min-width: 0;
+    max-width: 100vw;
     overflow: hidden;
     touch-action: pan-y;
 }
 
 body.mobile-viewport #loginScreen {
-    width: var(--app-width);
-    max-width: var(--app-width);
-    height: var(--app-height);
-    min-height: var(--app-height);
-    max-height: var(--app-height);
+    width: min(82vw, 360px);
+    max-width: calc(100vw - 40px);
+    height: auto;
+    min-height: 0;
+    max-height: calc(var(--app-height) - 28px);
     justify-content: flex-start;
     overflow-y: auto;
     overscroll-behavior: contain;
     touch-action: pan-y;
     -webkit-overflow-scrolling: touch;
-    margin: 0;
-    padding: 20px 16px max(24px, env(safe-area-inset-bottom));
-    border-left-width: 8px;
-    border-right-width: 8px;
-    border-radius: 0;
+    margin: 14px auto;
+    padding: 14px 12px max(16px, env(safe-area-inset-bottom));
+    border-left-width: 6px;
+    border-right-width: 6px;
+    border-radius: 8px;
     transform: none;
 }
 
 body.mobile-viewport #loginScreen h1 {
-    font-size: clamp(2.35rem, 15vw, 4.25rem);
+    font-size: clamp(1.65rem, 8.8vw, 2.45rem);
     line-height: 0.95;
-    margin: 10px auto 18px;
-    max-width: calc(var(--app-width) - 36px);
+    margin: 4px auto 10px;
+    max-width: 100%;
     letter-spacing: 0;
 }
 
 body.mobile-viewport .tagline {
-    max-width: calc(var(--app-width) - 52px);
-    margin: 0 auto 18px;
-    font-size: clamp(0.78rem, 3.9vw, 1.02rem);
-    line-height: 1.22;
+    max-width: min(calc(var(--app-width) - 60px), 330px);
+    margin: 0 auto 12px;
+    font-size: clamp(0.68rem, 3.1vw, 0.86rem);
+    line-height: 1.18;
 }
 
 body.mobile-viewport .login-lanes {
     grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
+    gap: 9px;
+}
+
+body.mobile-viewport #authForm {
+    gap: 8px;
 }
 
 body.mobile-viewport .login-panel {
-    padding: 14px;
+    padding: 10px;
+    gap: 8px;
 }
 
 body.mobile-viewport .online-auth-block {
-    padding: 10px;
+    padding: 8px;
 }
 
 body.mobile-viewport .google-alias-row {
@@ -1600,13 +1626,13 @@ body.mobile-viewport #googleAliasSaveButton {
 body.mobile-viewport .input-group {
     align-items: stretch;
     flex-direction: column;
-    gap: 7px;
+    gap: 5px;
 }
 
 body.mobile-viewport .input-group label {
     width: auto;
     text-align: left;
-    font-size: clamp(0.95rem, 4vw, 1.1rem);
+    font-size: clamp(0.78rem, 3.3vw, 0.95rem);
 }
 
 body.mobile-viewport #loginScreen input[type="text"],
@@ -1614,24 +1640,67 @@ body.mobile-viewport #loginScreen input[type="email"],
 body.mobile-viewport #loginScreen input[type="password"] {
     width: 100%;
     font-size: 16px;
-    padding: 13px;
+    padding: 9px 10px;
 }
 
 body.mobile-viewport #loginScreen input[type="password"] {
-    font-size: 20px;
+    font-size: 17px;
 }
 
 body.mobile-viewport #loginScreen .primary-action,
 body.mobile-viewport #loginScreen button {
     width: 100%;
     max-width: 100%;
-    padding: 13px 14px;
-    font-size: clamp(1rem, 5.1vw, 1.28rem);
+    padding: 10px 12px;
+    font-size: clamp(0.86rem, 4.1vw, 1.06rem);
 }
 
 body.mobile-viewport .button-group {
-    flex-direction: column;
-    gap: 10px;
+    flex-direction: row;
+    gap: 8px;
+}
+
+body.mobile-viewport .button-group button {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+body.mobile-viewport .section-label {
+    font-size: 0.82rem;
+}
+
+body.mobile-viewport .seed-random-row {
+    font-size: 0.72rem;
+}
+
+body.mobile-viewport .auth-divider {
+    font-size: 0.76rem;
+    gap: 8px;
+}
+
+body.mobile-viewport .auth-links {
+    gap: 16px;
+}
+
+body.mobile-viewport .toggle-auth a {
+    font-size: 0.78rem;
+}
+
+body.mobile-viewport #infoText {
+    font-size: 0.76rem;
+    line-height: 1.15;
+}
+
+body.mobile-viewport .menu-actions {
+    gap: 8px;
+}
+
+body.mobile-viewport #loginScreen .menu-actions button {
+    width: auto;
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: 8px;
+    font-size: clamp(0.68rem, 3vw, 0.84rem);
 }
 
 body.mobile-viewport .menu-card {
