@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-97';
-import * as graphics from './graphics.js?v=mobile-portrait-97';
-import * as input from './input.js?v=mobile-portrait-97';
-import * as audio from './audio.js?v=mobile-portrait-97';
-import { player, createPlatform } from './entities.js?v=mobile-portrait-97';
-import * as ui from './ui.js?v=mobile-portrait-97'; // Import UI
+import * as state from './state.js?v=mobile-portrait-98';
+import * as graphics from './graphics.js?v=mobile-portrait-98';
+import * as input from './input.js?v=mobile-portrait-98';
+import * as audio from './audio.js?v=mobile-portrait-98';
+import { player, createPlatform } from './entities.js?v=mobile-portrait-98';
+import * as ui from './ui.js?v=mobile-portrait-98'; // Import UI
 import {
     MIN_VERT_GAP, MAX_VERT_GAP, PLATFORM_START_WIDTH, PLATFORM_EARLY_MIN_WIDTH, PLATFORM_MIN_WIDTH,
     PLATFORM_WIDTH_DIFFICULTY_HEIGHT, PLAYER_GRAVITY, PLAYER_JUMP_POWER, PLAYER_SPEED,
@@ -11,7 +11,7 @@ import {
     PLATFORM_PROBABILITY, PLATFORM_MIDDLE_THRESHOLD,
     PLATFORM_FLASH_DURATION, PLATFORM_FLASH_INTERVAL_MAX, PLATFORM_FLASH_INTERVAL_MIN,
     PLATFORM_FLASH_START_DELAY, PLAYER_AIR_CONTROL_FACTOR
-} from './constants.js?v=mobile-portrait-97';
+} from './constants.js?v=mobile-portrait-98';
 
 // --- Game Variables ---
 let animationFrameId = null;

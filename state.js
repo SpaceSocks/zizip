@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-97';
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-97';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-98';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-98';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({
@@ -127,6 +127,8 @@ let achievementState = {
     unlocked: {}
 };
 let achievementPopups = [];
+let runStartBestHeight = 0;
+let heightRecordPopupQueued = false;
 let cloudAchievementWriteTimer = null;
 let cloudAchievementWriteInFlight = false;
 
@@ -416,22 +418,45 @@ function formatAchievementProgress(value, achievement) {
     return achievement.suffix ? `${rounded.toLocaleString()}${achievement.suffix}` : rounded.toLocaleString();
 }
 
-function queueAchievementPopup(achievement) {
+function queueNotificationPopup(popup) {
     achievementPopups.push({
-        id: achievement.id,
-        title: achievement.title,
-        description: achievement.description,
+        id: popup.id,
+        type: popup.type || 'achievement',
+        label: popup.label || 'ACHIEVEMENT UNLOCKED',
+        title: popup.title,
+        description: popup.description || '',
         createdAt: Date.now(),
         alpha: 0
     });
-    if (achievementPopups.length > 3) achievementPopups = achievementPopups.slice(-3);
+    if (achievementPopups.length > 4) achievementPopups = achievementPopups.slice(-4);
 
     window.dispatchEvent(new CustomEvent('zipzip:achievement-unlocked', {
         detail: {
-            id: achievement.id,
-            title: achievement.title
+            id: popup.id,
+            title: popup.title,
+            type: popup.type || 'achievement'
         }
     }));
+}
+
+function queueAchievementPopup(achievement) {
+    queueNotificationPopup({
+        id: achievement.id,
+        type: 'achievement',
+        label: 'ACHIEVEMENT UNLOCKED',
+        title: achievement.title,
+        description: achievement.description
+    });
+}
+
+function queueHeightRecordPopup(height) {
+    queueNotificationPopup({
+        id: `height-record-${Math.floor(height)}`,
+        type: 'record',
+        label: 'NEW HEIGHT RECORD',
+        title: `${Math.floor(height).toLocaleString()} M`,
+        description: 'Beat your previous best height.'
+    });
 }
 
 function evaluateAchievements() {
@@ -629,6 +654,10 @@ export function setEndTime(time) {
 export const getMaxHeight = () => maxHeight;
 export function setMaxHeight(height) {
     maxHeight = height;
+    if (!heightRecordPopupQueued && runStartBestHeight > 0 && maxHeight > runStartBestHeight) {
+        heightRecordPopupQueued = true;
+        queueHeightRecordPopup(maxHeight);
+    }
     updateAchievementStat('bestHeight', maxHeight);
 }
 
@@ -721,6 +750,9 @@ export function setCurrentTrackInfo(trackName) {
 
 // --- Game Logic Related State Changes ---
 export function resetGameStats() {
+    loadAchievementStateForCurrentPlayer();
+    runStartBestHeight = Number(achievementState.stats.bestHeight) || 0;
+    heightRecordPopupQueued = false;
     score = 0;
     startTime = performance.now();
     elapsedTime = 0;

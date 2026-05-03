@@ -1,9 +1,9 @@
 // This file will handle graphics, drawing, and canvas resizing
 
-import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-97';
-import * as state from './state.js?v=mobile-portrait-97';
-import { player } from './entities.js?v=mobile-portrait-97'; // Need player for drawing
-import * as ui from './ui.js?v=mobile-portrait-97'; // Import ui module
+import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-98';
+import * as state from './state.js?v=mobile-portrait-98';
+import { player } from './entities.js?v=mobile-portrait-98'; // Need player for drawing
+import * as ui from './ui.js?v=mobile-portrait-98'; // Import ui module
 
 // --- Canvas Setup ---
 export const canvas = document.getElementById('gameCanvas');
@@ -425,36 +425,48 @@ function drawAchievementToasts(centerX, y, maxWidth, compact = false) {
     const visiblePopups = state.getAchievementPopups?.() || [];
     if (!visiblePopups.length) return 0;
 
-    const popup = visiblePopups[0];
-    const age = now - popup.createdAt;
-    const fadeOutStart = ACHIEVEMENT_TOAST_LIFETIME - ACHIEVEMENT_TOAST_FADE;
-    const alpha = age < ACHIEVEMENT_TOAST_FADE
-        ? age / ACHIEVEMENT_TOAST_FADE
-        : age > fadeOutStart
-            ? (ACHIEVEMENT_TOAST_LIFETIME - age) / ACHIEVEMENT_TOAST_FADE
-            : 1;
-
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
     const width = Math.min(maxWidth, compact ? 310 : 420);
     const height = compact ? 38 : 46;
     const x = centerX - width / 2;
-    ctx.fillStyle = 'rgba(46, 34, 47, 0.92)';
-    ctx.strokeStyle = R64.YELLOW;
-    ctx.lineWidth = compact ? 2 : 3;
-    ctx.fillRect(x, y, width, height);
-    ctx.strokeRect(x, y, width, height);
+    const gap = compact ? 5 : 7;
+    const labelSize = compact ? 12 : 15;
+    const titleSize = compact ? 15 : 19;
+    const visibleStack = visiblePopups.slice(0, 4);
 
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = R64.YELLOW;
-    ctx.font = `${compact ? 12 : 15}px Petitinho`;
-    ctx.fillText('ACHIEVEMENT UNLOCKED', centerX, y + (compact ? 5 : 6), width - 16);
-    ctx.fillStyle = R64.WHITE;
-    ctx.font = `${compact ? 15 : 19}px Petitinho`;
-    ctx.fillText(String(popup.title || '').toUpperCase(), centerX, y + (compact ? 19 : 24), width - 18);
-    ctx.restore();
-    return height;
+    visibleStack.forEach((popup, index) => {
+        const toastY = y + index * (height + gap);
+        const age = now - popup.createdAt;
+        const fadeOutStart = ACHIEVEMENT_TOAST_LIFETIME - ACHIEVEMENT_TOAST_FADE;
+        const alpha = age < ACHIEVEMENT_TOAST_FADE
+            ? age / ACHIEVEMENT_TOAST_FADE
+            : age > fadeOutStart
+                ? (ACHIEVEMENT_TOAST_LIFETIME - age) / ACHIEVEMENT_TOAST_FADE
+                : 1;
+        const isRecord = popup.type === 'record';
+        const accent = isRecord ? R64.PLAYER_BLUE : R64.YELLOW;
+        const label = String(popup.label || (isRecord ? 'NEW HEIGHT RECORD' : 'ACHIEVEMENT UNLOCKED')).toUpperCase();
+        const title = String(popup.title || '').toUpperCase();
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+        ctx.fillStyle = isRecord ? 'rgba(15, 29, 43, 0.94)' : 'rgba(46, 34, 47, 0.92)';
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = compact ? 2 : 3;
+        ctx.fillRect(x, toastY, width, height);
+        ctx.strokeRect(x, toastY, width, height);
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = accent;
+        ctx.font = `${labelSize}px Petitinho`;
+        ctx.fillText(label, centerX, toastY + (compact ? 5 : 6), width - 16);
+        ctx.fillStyle = R64.WHITE;
+        ctx.font = `${titleSize}px Petitinho`;
+        ctx.fillText(title, centerX, toastY + (compact ? 19 : 24), width - 18);
+        ctx.restore();
+    });
+
+    return visibleStack.length * height + Math.max(0, visibleStack.length - 1) * gap;
 }
 
 function getDisplayedRunHeight(player) {
