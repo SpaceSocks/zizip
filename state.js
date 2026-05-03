@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-94';
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-94';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-95';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-95';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({
@@ -1340,7 +1340,7 @@ const LEADERBOARD_COLLECTION = 'leaderboard'; // Name of Firestore collection
 const LOCAL_LEADERBOARD_KEY = 'zipzip_localLeaderboard';
 const LOCAL_PLAYER_ID_KEY = 'zipzip_localPlayerId';
 const LOCAL_ALIAS_KEY = 'zipzip_localAlias';
-const LEADERBOARD_RESET_VERSION = 'reset-all-accounts-20260502';
+const LEADERBOARD_RESET_VERSION = 'reset-all-accounts-20260502b';
 const LOCAL_LEADERBOARD_RESET_KEY = `zipzip_${LEADERBOARD_RESET_VERSION}_local`;
 const REMOTE_LEADERBOARD_RESET_KEY = `zipzip_${LEADERBOARD_RESET_VERSION}_remote`;
 const LEADERBOARD_DISPLAY_LIMIT = 100;
@@ -1784,6 +1784,7 @@ export function clearLocalLeaderboardForFreshStart() {
     localStorage.removeItem('highestHeight');
     localStorage.removeItem(BEST_RUN_REPLAY_KEY);
     removeLocalStorageKeysStartingWith(`${BEST_RUN_REPLAY_KEY}:`);
+    removeLocalStorageKeysStartingWith(`${ACHIEVEMENT_STORAGE_PREFIX}:`);
     const currentBestRunKey = getBestRunReplayStorageKey();
     if (currentBestRunKey) localStorage.removeItem(currentBestRunKey);
     localLeaderboardCache = null;
