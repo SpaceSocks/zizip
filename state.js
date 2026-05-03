@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-93';
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-93';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-94';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-94';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({
@@ -723,6 +723,7 @@ export function setCurrentTrackInfo(trackName) {
 export function resetGameStats() {
     score = 0;
     startTime = performance.now();
+    elapsedTime = 0;
     endTime = 0;
     maxHeight = 0;
     resetLives(); // Reset lives when resetting game stats

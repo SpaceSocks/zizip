@@ -1,9 +1,9 @@
 // This file will handle graphics, drawing, and canvas resizing
 
-import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-93';
-import * as state from './state.js?v=mobile-portrait-93';
-import { player } from './entities.js?v=mobile-portrait-93'; // Need player for drawing
-import * as ui from './ui.js?v=mobile-portrait-93'; // Import ui module
+import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-94';
+import * as state from './state.js?v=mobile-portrait-94';
+import { player } from './entities.js?v=mobile-portrait-94'; // Need player for drawing
+import * as ui from './ui.js?v=mobile-portrait-94'; // Import ui module
 
 // --- Canvas Setup ---
 export const canvas = document.getElementById('gameCanvas');
@@ -1243,8 +1243,9 @@ function drawReplay() {
     clipToReplayView(view);
 
     const platforms = state.getReplayPlatforms(replay);
-    platforms.forEach(replayPlatform => {
-        if (replayPlatform.time > viewer.time + 200) return;
+    platforms.forEach((replayPlatform, platformIndex) => {
+        const isOpeningPlatform = platformIndex < 2 && viewer.time < 1200;
+        if (!isOpeningPlatform && replayPlatform.time > viewer.time + 200) return;
         if (isReplayPlatformTooOld(replayPlatform, sample, viewer.time)) return;
 
         const moved = getReplayPlatformPosition(replayPlatform, viewer.time, sample, replayPlatformPositionCache);

@@ -545,20 +545,16 @@ body.game-screen-active {
 }
 
 .apple-mark {
-    display: inline-grid;
-    place-items: center;
-    width: 44px;
-    height: 44px;
-    overflow: hidden;
-    background: transparent;
-    margin: -10px -5px;
+    display: inline-block;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    background: url('Sprites/apple-logo-white.png?v=apple-logo-clean-1') center / contain no-repeat;
+    margin: 0 0 0 -2px;
 }
 
 .apple-mark img {
-    display: block;
-    width: 44px;
-    height: 44px;
-    object-fit: contain;
+    display: none;
 }
 
 .menu-actions {
@@ -567,15 +563,17 @@ body.game-screen-active {
     gap: 12px;
     flex-wrap: wrap;
     width: 100%;
+    padding-right: 0;
 }
 
 .main-menu-version {
-    position: absolute;
-    right: 16px;
-    bottom: 10px;
+    position: static;
+    align-self: flex-end;
+    margin-top: -3px;
+    padding-right: 5px;
     color: rgba(199, 220, 208, 0.64);
     font-family: 'Petitinho', sans-serif;
-    font-size: 0.78rem;
+    font-size: 0.58rem;
     line-height: 1;
     text-align: right;
     pointer-events: none;
@@ -1524,15 +1522,21 @@ input[type=range]::-moz-range-track {
     }
 
     .menu-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
+        padding-right: 0;
     }
 
     #loginScreen .menu-actions button {
-        width: auto;
-        flex: 1 1 0;
+        width: 100%;
         min-width: 0;
-        padding-inline: 8px;
-        font-size: clamp(0.68rem, 3vw, 0.84rem);
+        padding-inline: 6px;
+        font-size: clamp(0.6rem, 2.7vw, 0.78rem);
+    }
+
+    #loginScreen .menu-actions #optionsButton {
+        grid-column: 1 / -1;
     }
 }
 
@@ -1644,7 +1648,12 @@ body.mobile-viewport #loginScreen input[type="password"] {
 }
 
 body.mobile-viewport #loginScreen input[type="password"] {
-    font-size: 17px;
+    font-size: 15px;
+}
+
+body.mobile-viewport #loginScreen input[type="email"]::placeholder,
+body.mobile-viewport #loginScreen input[type="password"]::placeholder {
+    font-size: 0.78em;
 }
 
 body.mobile-viewport #loginScreen .primary-action,
@@ -1692,15 +1701,21 @@ body.mobile-viewport #infoText {
 }
 
 body.mobile-viewport .menu-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+    padding-right: 0;
 }
 
 body.mobile-viewport #loginScreen .menu-actions button {
-    width: auto;
-    flex: 1 1 0;
+    width: 100%;
     min-width: 0;
-    padding-inline: 8px;
-    font-size: clamp(0.68rem, 3vw, 0.84rem);
+    padding-inline: 5px;
+    font-size: clamp(0.52rem, 2.35vw, 0.68rem);
+}
+
+body.mobile-viewport #loginScreen .menu-actions #optionsButton {
+    grid-column: 1 / -1;
 }
 
 body.mobile-viewport .menu-card {
@@ -1938,11 +1953,10 @@ body.mobile-viewport #optionsMenu h2 {
 }
 
 body.mobile-viewport .main-menu-version {
-    position: static;
     align-self: flex-end;
-    margin-top: -2px;
+    margin-top: -1px;
     padding-right: 4px;
-    font-size: 0.68rem;
+    font-size: 0.58rem;
 }
 
 body.mobile-viewport .options-category-grid {
