@@ -302,7 +302,8 @@ body.game-screen-active {
 .section-label {
     color: #f9c22b;
     text-align: center;
-    font-size: 1em;
+    font-size: 16px;
+    line-height: 1;
     letter-spacing: 1px;
     text-transform: uppercase;
 }
@@ -328,7 +329,7 @@ body.game-screen-active {
 
 .email-auth-block .input-group label {
     width: 92px;
-    font-size: 0.96em;
+    font-size: 16px;
 }
 
 .local-panel .input-group {
@@ -390,7 +391,8 @@ body.game-screen-active {
 }
 
 .input-group label {
-    font-size: 1.1em; /* Adjust size as needed */
+    font-size: 18px; /* Keep Petitinho on whole pixels so it renders cleanly. */
+    line-height: 1;
     color: #ffffff; /* White label */
     width: 105px; /* Increased fixed width for labels */
     text-align: right;
@@ -408,7 +410,8 @@ body.game-screen-active {
     border-radius: 8px;
     background-color: #3e3546; /* Darker input background */
     color: #c7dcd0; /* Light text color */
-    font-size: 0.98em; /* Old font size */
+    font-size: 16px; /* Whole-pixel size keeps Petitinho from wobbling. */
+    line-height: 1;
     /* font-family: Petitinho inherited */
     box-shadow: inset 0 2px 5px rgba(0,0,0,0.2); /* Old shadow */
 }
@@ -420,7 +423,7 @@ body.game-screen-active {
 
 #loginScreen input[type="password"] {
     font-family: var(--game-font);
-    font-size: 1.12em;
+    font-size: 18px;
     line-height: 1;
 }
 
@@ -476,7 +479,8 @@ body.game-screen-active {
     padding: 12px 24px;
     background: #f9c22b;
     color: #2e222f;
-    font-size: 1.22em;
+    font-size: 20px;
+    line-height: 1;
     letter-spacing: 1px;
     box-shadow: 0 10px 30px rgba(249, 194, 43, 0.22);
 }
@@ -1636,7 +1640,8 @@ body.mobile-viewport .input-group {
 body.mobile-viewport .input-group label {
     width: auto;
     text-align: left;
-    font-size: clamp(0.78rem, 3.3vw, 0.95rem);
+    font-size: 16px;
+    line-height: 1;
 }
 
 body.mobile-viewport #loginScreen input[type="text"],
@@ -1675,7 +1680,8 @@ body.mobile-viewport .button-group button {
 }
 
 body.mobile-viewport .section-label {
-    font-size: 0.82rem;
+    font-size: 14px;
+    line-height: 1;
 }
 
 body.mobile-viewport .seed-random-row {
