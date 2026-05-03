@@ -1893,13 +1893,20 @@ body.mobile-viewport .menu-leaderboard-row .replay-icon-button::before {
 }
 
 body.mobile-viewport .leaderboard-card .menu-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+    width: 100%;
 }
 
 body.mobile-viewport .leaderboard-card .menu-button {
-    width: min(46%, 150px);
-    padding: 10px 12px;
-    font-size: 0.98rem;
+    width: 100%;
+    min-width: 0;
+    padding: 10px 6px;
+    font-size: clamp(0.68rem, 3.2vw, 0.82rem);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
 }
 
 body.mobile-viewport .game-over-leaderboard-panel {
@@ -1933,10 +1940,12 @@ body.mobile-viewport .game-over-leaderboard-panel .menu-leaderboard-list {
 }
 
 body.mobile-viewport .game-over-leaderboard-panel .compact-action {
-    width: min(54%, 170px);
+    width: min(72%, 220px);
     min-width: 0;
     padding: 8px 10px;
-    font-size: 0.86rem;
+    font-size: clamp(0.72rem, 3.4vw, 0.86rem);
+    white-space: nowrap;
+    overflow: hidden;
 }
 
 body.mobile-viewport #optionsMenu {
