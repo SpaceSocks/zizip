@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-89';
-import * as audio from './audio.js?v=mobile-portrait-89'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-90';
+import * as audio from './audio.js?v=mobile-portrait-90'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-89';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-90';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-89';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-90';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -392,14 +392,6 @@ function makeLeaderboardNameCell(entry) {
     name.className = 'leaderboard-player-name';
     name.textContent = (entry.displayName || 'Anon').toUpperCase();
     cell.appendChild(name);
-
-    const seed = entry.seed || entry.replay?.seed || '';
-    if (seed) {
-        const seedLabel = document.createElement('span');
-        seedLabel.className = 'leaderboard-seed';
-        seedLabel.textContent = `SEED ${String(seed).toUpperCase()}`;
-        cell.appendChild(seedLabel);
-    }
 
     return cell;
 }

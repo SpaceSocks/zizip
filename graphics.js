@@ -1,9 +1,9 @@
 // This file will handle graphics, drawing, and canvas resizing
 
-import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-89';
-import * as state from './state.js?v=mobile-portrait-89';
-import { player } from './entities.js?v=mobile-portrait-89'; // Need player for drawing
-import * as ui from './ui.js?v=mobile-portrait-89'; // Import ui module
+import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-90';
+import * as state from './state.js?v=mobile-portrait-90';
+import { player } from './entities.js?v=mobile-portrait-90'; // Need player for drawing
+import * as ui from './ui.js?v=mobile-portrait-90'; // Import ui module
 
 // --- Canvas Setup ---
 export const canvas = document.getElementById('gameCanvas');
@@ -221,6 +221,11 @@ export function formatTime(milliseconds, includeMilliseconds = true) {
 // --- Drawing Functions ---
 
 // Draw HUD (Heads Up Display)
+function getRunSeedLabel(seed = state.getCurrentRunSeed?.()) {
+    const seedText = String(seed || '').trim();
+    return seedText ? `SEED: ${seedText.toUpperCase()}` : '';
+}
+
 function drawHUD(player) {
     if (isCompactHUD()) {
         drawCompactHUD(player);
@@ -260,12 +265,23 @@ function drawHUD(player) {
     ctx.fillText(formattedTime, canvas.width / 2, 20);
     yPos += lineHeight;
     const trackName = state.getCurrentTrackInfo(); // Get from state
+    let centerBottomY = yPos;
     if (trackName !== "None") {
         ctx.font = '20px Petitinho'; // Slightly smaller for track name
         ctx.fillText(`Playing: ${trackName}`, canvas.width / 2, yPos);
+        centerBottomY = yPos + 24;
         ctx.font = '24px Petitinho'; // Reset font size
     }
-    const achievementToastY = trackName !== "None" ? yPos + 28 : yPos + 4;
+    const seedLabel = getRunSeedLabel();
+    if (seedLabel) {
+        ctx.fillStyle = 'rgba(199, 220, 208, 0.82)';
+        ctx.font = '16px Petitinho';
+        ctx.fillText(seedLabel, canvas.width / 2, centerBottomY);
+        centerBottomY += 21;
+        ctx.fillStyle = R64.WHITE;
+        ctx.font = '24px Petitinho';
+    }
+    const achievementToastY = centerBottomY + 4;
     const achievementToastHeight = drawAchievementToasts(canvas.width / 2, achievementToastY, canvas.width - 80, false);
 
     // --- Real-time Height Meter (Center Right) ---
@@ -365,12 +381,21 @@ function drawCompactHUD(player) {
     ctx.fillText(formattedTime, halfWidth, top + 40, canvas.width - edge * 2);
 
     const trackName = state.getCurrentTrackInfo();
+    let centerBottomY = top + 56;
     if (trackName !== "None" && canvas.height > 620) {
         ctx.fillStyle = 'rgba(199, 220, 208, 0.86)';
         ctx.font = '12px Petitinho';
         ctx.fillText(`Playing: ${trackName}`, halfWidth, top + 60, canvas.width - edge * 2);
+        centerBottomY = top + 76;
     }
-    const achievementToastY = top + 82;
+    const seedLabel = getRunSeedLabel();
+    if (seedLabel && canvas.height > 560) {
+        ctx.fillStyle = 'rgba(199, 220, 208, 0.82)';
+        ctx.font = '11px Petitinho';
+        ctx.fillText(seedLabel, halfWidth, centerBottomY, canvas.width - edge * 2);
+        centerBottomY += 17;
+    }
+    const achievementToastY = Math.max(top + 82, centerBottomY + 4);
     const achievementToastHeight = drawAchievementToasts(halfWidth, achievementToastY, canvas.width - edge * 2, true);
 
     ctx.fillStyle = R64.WHITE;
@@ -1281,6 +1306,14 @@ function drawReplay() {
     ctx.textAlign = 'right';
     ctx.fillText(`HEIGHT: ${Math.round(sample.height)} M`, hudRight, view.y + edge, hudWidth * 0.42);
     ctx.fillText(`${formatTime(viewer.time, true)}`, hudRight, view.y + edge + replayLineHeight, hudWidth * 0.42);
+
+    const seedLabel = getRunSeedLabel(replay.seed || viewer.entry?.seed);
+    if (seedLabel) {
+        ctx.fillStyle = 'rgba(199, 220, 208, 0.82)';
+        ctx.font = `${Math.max(11, Math.round(replayFont * 0.72))}px Petitinho`;
+        ctx.textAlign = 'center';
+        ctx.fillText(seedLabel, view.x + view.width / 2, view.y + edge + replayLineHeight * 2, hudWidth * 0.9);
+    }
 }
 
 function drawDeathParticles() {
