@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-99';
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-99';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-100';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-100';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({
@@ -86,6 +86,13 @@ const ACHIEVEMENTS = Object.freeze([
     { id: 'first_run', title: 'First Zip', description: 'Start your first run.', metric: 'runs', target: 1 },
     { id: 'runs_10', title: 'Again Again', description: 'Start 10 runs.', metric: 'runs', target: 10 },
     { id: 'runs_50', title: 'Orbit Habit', description: 'Start 50 runs.', metric: 'runs', target: 50 },
+    { id: 'runs_100', title: 'Century Climber', description: 'Start 100 runs.', metric: 'runs', target: 100 },
+    { id: 'runs_200', title: 'Launch Routine', description: 'Start 200 runs.', metric: 'runs', target: 200 },
+    { id: 'runs_300', title: 'Orbit Grinder', description: 'Start 300 runs.', metric: 'runs', target: 300 },
+    { id: 'runs_400', title: 'Starfield Regular', description: 'Start 400 runs.', metric: 'runs', target: 400 },
+    { id: 'runs_500', title: 'Five Hundred Zips', description: 'Start 500 runs.', metric: 'runs', target: 500 },
+    { id: 'runs_750', title: 'Deep Run Habit', description: 'Start 750 runs.', metric: 'runs', target: 750 },
+    { id: 'runs_1000', title: 'Thousand Run Club', description: 'Start 1,000 runs.', metric: 'runs', target: 1000 },
     { id: 'first_death', title: 'Space Oops', description: 'Fall for the first time.', metric: 'deaths', target: 1 },
     { id: 'deaths_10', title: 'Helmet Tester', description: 'Fall 10 times.', metric: 'deaths', target: 10 },
     { id: 'deaths_50', title: 'Crash Course', description: 'Fall 50 times.', metric: 'deaths', target: 50 },
