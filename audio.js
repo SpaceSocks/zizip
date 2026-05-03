@@ -1,4 +1,4 @@
-import * as state from './state.js?v=mobile-portrait-91';
+import * as state from './state.js?v=mobile-portrait-92';
 // import { player } from './entities.js'; // No longer needed here
 
 // This file will handle audio initialization and playback 
@@ -25,7 +25,7 @@ let sfxPlayers = [];
 
 // --- Volume Control ---
 let musicVolume = 0.6; // Start with default volume (0.0 to 1.0)
-let sfxVolume = 0.6;   // Start with default volume (0.0 to 1.0)
+let sfxVolume = 0.85;  // Start with default volume (0.0 to 1.0)
 let musicDucked = false;
 
 // --- Music Tracks ---
