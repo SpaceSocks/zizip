@@ -1,4 +1,4 @@
-import * as state from './state.js?v=mobile-portrait-98';
+import * as state from './state.js?v=mobile-portrait-99';
 // import { player } from './entities.js'; // No longer needed here
 
 // This file will handle audio initialization and playback 
@@ -10,6 +10,7 @@ let sfxMiddleLandPlayer;
 let sfxGameOverPlayer;
 let sfxPlayerDeathPlayer;
 let sfxAchievementPlayer;
+let sfxHeightRecordPlayer;
 let audioContext;
 let sfxGainNode;
 let musicSourceNode;
@@ -46,12 +47,14 @@ const sfxMiddleLandPath = 'Audio/SFX/middleBlock.wav';
 const sfxGameOverPath = 'Audio/SFX/gameover.wav';
 const sfxPlayerDeathPath = 'Audio/SFX/PlayerDeath.wav';
 const sfxAchievementPath = 'Audio/SFX/AchievementUnlock.wav';
+const sfxHeightRecordPath = 'Audio/SFX/HeightRecord.wav';
 const SFX_DEFINITIONS = {
     land: sfxLandPath,
     middleLand: sfxMiddleLandPath,
     gameOver: sfxGameOverPath,
     playerDeath: sfxPlayerDeathPath,
-    achievement: sfxAchievementPath
+    achievement: sfxAchievementPath,
+    heightRecord: sfxHeightRecordPath
 };
 
 function getAudioContext() {
@@ -233,9 +236,10 @@ export function setupAudioPlayers() {
     sfxGameOverPlayer = new Audio(sfxGameOverPath);
     sfxPlayerDeathPlayer = new Audio(sfxPlayerDeathPath);
     sfxAchievementPlayer = new Audio(sfxAchievementPath);
+    sfxHeightRecordPlayer = new Audio(sfxHeightRecordPath);
 
     // Assign initial volume and add to array
-    sfxPlayers = [sfxLandPlayer, sfxMiddleLandPlayer, sfxGameOverPlayer, sfxPlayerDeathPlayer, sfxAchievementPlayer];
+    sfxPlayers = [sfxLandPlayer, sfxMiddleLandPlayer, sfxGameOverPlayer, sfxPlayerDeathPlayer, sfxAchievementPlayer, sfxHeightRecordPlayer];
     sfxPlayers.forEach(player => {
         player.preload = 'auto';
         player.volume = sfxVolume;
@@ -261,6 +265,7 @@ export function setupAudioPlayers() {
     sfxGameOverPlayer.addEventListener('error', (e) => console.error("SFX Game Over Error:", e));
     sfxPlayerDeathPlayer.addEventListener('error', (e) => console.error("SFX Player Death Error:", e));
     sfxAchievementPlayer.addEventListener('error', (e) => console.error("SFX Achievement Error:", e));
+    sfxHeightRecordPlayer.addEventListener('error', (e) => console.error("SFX Height Record Error:", e));
     bindAchievementSoundListener();
     console.log("Audio players setup with listeners.")
 }
@@ -268,7 +273,11 @@ export function setupAudioPlayers() {
 function bindAchievementSoundListener() {
     if (achievementSoundListenerBound) return;
     achievementSoundListenerBound = true;
-    window.addEventListener('zipzip:achievement-unlocked', () => {
+    window.addEventListener('zipzip:achievement-unlocked', (event) => {
+        if (event.detail?.type === 'record') {
+            playHeightRecordSound();
+            return;
+        }
         playAchievementSound();
     });
 }
@@ -511,5 +520,14 @@ export function playAchievementSound() {
     }
     if (!playBufferedSfx('achievement')) {
         playFallbackAudio(sfxAchievementPlayer, 'Achievement');
+    }
+}
+
+export function playHeightRecordSound() {
+    if (!state.getAudioInitialized() || !sfxHeightRecordPlayer) {
+        return;
+    }
+    if (!playBufferedSfx('heightRecord')) {
+        playFallbackAudio(sfxHeightRecordPlayer, 'Height Record');
     }
 }
