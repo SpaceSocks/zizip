@@ -125,6 +125,86 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
     }
 
+    function validAchievementStats() {
+      return request.resource.data.stats is map
+        && request.resource.data.stats.keys().hasOnly([
+          'runs',
+          'deaths',
+          'bestHeight',
+          'bestScore',
+          'bestPerfectStreak'
+        ])
+        && request.resource.data.stats.keys().hasAll([
+          'runs',
+          'deaths',
+          'bestHeight',
+          'bestScore',
+          'bestPerfectStreak'
+        ])
+        && request.resource.data.stats.runs is number
+        && request.resource.data.stats.runs >= 0
+        && request.resource.data.stats.runs <= 1000000
+        && request.resource.data.stats.deaths is number
+        && request.resource.data.stats.deaths >= 0
+        && request.resource.data.stats.deaths <= 1000000
+        && request.resource.data.stats.bestHeight is number
+        && request.resource.data.stats.bestHeight >= 0
+        && request.resource.data.stats.bestHeight <= 100000000
+        && request.resource.data.stats.bestScore is number
+        && request.resource.data.stats.bestScore >= 0
+        && request.resource.data.stats.bestScore <= 10000000
+        && request.resource.data.stats.bestPerfectStreak is number
+        && request.resource.data.stats.bestPerfectStreak >= 0
+        && request.resource.data.stats.bestPerfectStreak <= 100000;
+    }
+
+    function validAchievementUnlocked() {
+      return request.resource.data.unlocked is map
+        && request.resource.data.unlocked.keys().hasOnly([
+          'first_run',
+          'runs_10',
+          'runs_50',
+          'first_death',
+          'deaths_10',
+          'deaths_50',
+          'deaths_100',
+          'height_100',
+          'height_500',
+          'height_1000',
+          'height_5000',
+          'height_10000',
+          'height_25000',
+          'height_50000',
+          'height_100000',
+          'height_1000000',
+          'height_100000000',
+          'score_500',
+          'score_1000',
+          'score_5000',
+          'score_10000',
+          'score_20000',
+          'score_30000',
+          'score_40000',
+          'score_50000',
+          'perfect_3',
+          'perfect_10',
+          'perfect_25',
+          'perfect_50',
+          'perfect_100'
+        ]);
+    }
+
+    function validAchievementShape() {
+      return request.resource.data.keys().hasOnly([
+          'stats',
+          'unlocked',
+          'updatedAt'
+        ])
+        && request.resource.data.updatedAt == request.time
+        && validAchievementStats()
+        && validAchievementUnlocked();
+    }
+
     match /leaderboard/{entryId} {
       allow read: if true;
 
@@ -152,6 +232,17 @@ service cloud.firestore {
       allow update: if leaderboardWriter()
         && request.auth.uid == profileId
         && validProfileUpdateShape();
+
+      allow delete: if false;
+    }
+
+    match /achievements/{playerId} {
+      allow read: if leaderboardWriter()
+        && request.auth.uid == playerId;
+
+      allow create, update: if leaderboardWriter()
+        && request.auth.uid == playerId
+        && validAchievementShape();
 
       allow delete: if false;
     }

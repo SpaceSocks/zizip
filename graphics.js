@@ -1,9 +1,9 @@
 // This file will handle graphics, drawing, and canvas resizing
 
-import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-90';
-import * as state from './state.js?v=mobile-portrait-90';
-import { player } from './entities.js?v=mobile-portrait-90'; // Need player for drawing
-import * as ui from './ui.js?v=mobile-portrait-90'; // Import ui module
+import { R64, SCORE_POPUP_LIFETIME, SCORE_POPUP_FADE_DURATION, SCORE_POPUP_SPEED } from './constants.js?v=mobile-portrait-91';
+import * as state from './state.js?v=mobile-portrait-91';
+import { player } from './entities.js?v=mobile-portrait-91'; // Need player for drawing
+import * as ui from './ui.js?v=mobile-portrait-91'; // Import ui module
 
 // --- Canvas Setup ---
 export const canvas = document.getElementById('gameCanvas');
@@ -221,9 +221,9 @@ export function formatTime(milliseconds, includeMilliseconds = true) {
 // --- Drawing Functions ---
 
 // Draw HUD (Heads Up Display)
-function getRunSeedLabel(seed = state.getCurrentRunSeed?.()) {
+function getRunSeedLabel(seed = state.getCurrentRunSeed?.(), showUnknown = false) {
     const seedText = String(seed || '').trim();
-    return seedText ? `SEED: ${seedText.toUpperCase()}` : '';
+    return seedText ? `SEED: ${seedText.toUpperCase()}` : (showUnknown ? 'SEED: UNKNOWN' : '');
 }
 
 function drawHUD(player) {
@@ -246,6 +246,15 @@ function drawHUD(player) {
         yPos += lineHeight;
     }
     ctx.fillText(`LIVES: ${state.getLives()}`, 20, yPos);
+    const seedLabel = getRunSeedLabel();
+    if (seedLabel) {
+        yPos += lineHeight;
+        ctx.fillStyle = 'rgba(199, 220, 208, 0.86)';
+        ctx.font = '18px Petitinho';
+        ctx.fillText(seedLabel, 20, yPos, canvas.width * 0.42);
+        ctx.fillStyle = R64.WHITE;
+        ctx.font = '24px Petitinho';
+    }
 
     // Top Right: Score, Height
     ctx.textAlign = 'right';
@@ -271,15 +280,6 @@ function drawHUD(player) {
         ctx.fillText(`Playing: ${trackName}`, canvas.width / 2, yPos);
         centerBottomY = yPos + 24;
         ctx.font = '24px Petitinho'; // Reset font size
-    }
-    const seedLabel = getRunSeedLabel();
-    if (seedLabel) {
-        ctx.fillStyle = 'rgba(199, 220, 208, 0.82)';
-        ctx.font = '16px Petitinho';
-        ctx.fillText(seedLabel, canvas.width / 2, centerBottomY);
-        centerBottomY += 21;
-        ctx.fillStyle = R64.WHITE;
-        ctx.font = '24px Petitinho';
     }
     const achievementToastY = centerBottomY + 4;
     const achievementToastHeight = drawAchievementToasts(canvas.width / 2, achievementToastY, canvas.width - 80, false);
@@ -371,6 +371,13 @@ function drawCompactHUD(player) {
         ctx.fillText(`PLAYER: ${displayName}`, edge, top, halfWidth - 18);
     }
     ctx.fillText(`LIVES: ${state.getLives()}`, edge, top + 20, halfWidth - 18);
+    const seedLabel = getRunSeedLabel();
+    if (seedLabel) {
+        ctx.fillStyle = 'rgba(199, 220, 208, 0.84)';
+        ctx.font = '11px Petitinho';
+        ctx.fillText(seedLabel, edge, top + 40, halfWidth - 18);
+        ctx.fillStyle = R64.WHITE;
+    }
 
     ctx.textAlign = 'right';
     ctx.fillText(`SCORE: ${state.getScore()}`, canvas.width - edge, top, halfWidth - 18);
@@ -387,13 +394,6 @@ function drawCompactHUD(player) {
         ctx.font = '12px Petitinho';
         ctx.fillText(`Playing: ${trackName}`, halfWidth, top + 60, canvas.width - edge * 2);
         centerBottomY = top + 76;
-    }
-    const seedLabel = getRunSeedLabel();
-    if (seedLabel && canvas.height > 560) {
-        ctx.fillStyle = 'rgba(199, 220, 208, 0.82)';
-        ctx.font = '11px Petitinho';
-        ctx.fillText(seedLabel, halfWidth, centerBottomY, canvas.width - edge * 2);
-        centerBottomY += 17;
     }
     const achievementToastY = Math.max(top + 82, centerBottomY + 4);
     const achievementToastHeight = drawAchievementToasts(halfWidth, achievementToastY, canvas.width - edge * 2, true);
@@ -1303,17 +1303,17 @@ function drawReplay() {
     ctx.textBaseline = 'top';
     ctx.fillText(`REPLAY: ${(viewer.entry?.displayName || 'PLAYER').toUpperCase()}`, hudLeft, view.y + edge, hudWidth * 0.58);
     ctx.fillText(`SCORE: ${viewer.entry?.score ?? replay.score ?? 0}`, hudLeft, view.y + edge + replayLineHeight, hudWidth * 0.45);
-    ctx.textAlign = 'right';
-    ctx.fillText(`HEIGHT: ${Math.round(sample.height)} M`, hudRight, view.y + edge, hudWidth * 0.42);
-    ctx.fillText(`${formatTime(viewer.time, true)}`, hudRight, view.y + edge + replayLineHeight, hudWidth * 0.42);
-
-    const seedLabel = getRunSeedLabel(replay.seed || viewer.entry?.seed);
+    const seedLabel = getRunSeedLabel(replay.seed || viewer.entry?.seed, true);
     if (seedLabel) {
         ctx.fillStyle = 'rgba(199, 220, 208, 0.82)';
         ctx.font = `${Math.max(11, Math.round(replayFont * 0.72))}px Petitinho`;
-        ctx.textAlign = 'center';
-        ctx.fillText(seedLabel, view.x + view.width / 2, view.y + edge + replayLineHeight * 2, hudWidth * 0.9);
+        ctx.fillText(seedLabel, hudLeft, view.y + edge + replayLineHeight * 2, hudWidth * 0.45);
+        ctx.fillStyle = 'rgba(199, 220, 208, 0.9)';
+        ctx.font = `${replayFont}px Petitinho`;
     }
+    ctx.textAlign = 'right';
+    ctx.fillText(`HEIGHT: ${Math.round(sample.height)} M`, hudRight, view.y + edge, hudWidth * 0.42);
+    ctx.fillText(`${formatTime(viewer.time, true)}`, hudRight, view.y + edge + replayLineHeight, hudWidth * 0.42);
 }
 
 function drawDeathParticles() {

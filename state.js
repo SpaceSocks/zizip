@@ -1,7 +1,7 @@
 // This file will manage shared game state
 
-import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-90';
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-90';
+import { MAX_LIVES, MAX_PERFECT_COMBO_MULTIPLIER } from './constants.js?v=mobile-portrait-91';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-91';
 
 // --- Game States Enum ---
 export const GameState = Object.freeze({
@@ -81,6 +81,7 @@ let replayViewer = null;
 const pendingPersistentStats = new Map();
 let persistentStatsWriteScheduled = false;
 const ACHIEVEMENT_STORAGE_PREFIX = 'zipzip_achievements';
+const ACHIEVEMENTS_COLLECTION = 'achievements';
 const ACHIEVEMENTS = Object.freeze([
     { id: 'first_run', title: 'First Zip', description: 'Start your first run.', metric: 'runs', target: 1 },
     { id: 'runs_10', title: 'Again Again', description: 'Start 10 runs.', metric: 'runs', target: 10 },
@@ -126,6 +127,8 @@ let achievementState = {
     unlocked: {}
 };
 let achievementPopups = [];
+let cloudAchievementWriteTimer = null;
+let cloudAchievementWriteInFlight = false;
 
 function schedulePersistentStatWrite(key, value) {
     pendingPersistentStats.set(key, value);
@@ -292,6 +295,31 @@ function sanitizeAchievementSave(saveData = {}) {
     return { stats, unlocked };
 }
 
+function mergeAchievementSaves(...saves) {
+    const merged = sanitizeAchievementSave();
+    saves.forEach(saveData => {
+        const safeSave = sanitizeAchievementSave(saveData);
+        Object.keys(DEFAULT_ACHIEVEMENT_STATS).forEach(metric => {
+            merged.stats[metric] = Math.max(merged.stats[metric] || 0, safeSave.stats[metric] || 0);
+        });
+        ACHIEVEMENTS.forEach(achievement => {
+            const unlockedAt = safeSave.unlocked[achievement.id];
+            if (!unlockedAt) return;
+            merged.unlocked[achievement.id] = merged.unlocked[achievement.id]
+                ? Math.min(merged.unlocked[achievement.id], unlockedAt)
+                : unlockedAt;
+        });
+    });
+    return merged;
+}
+
+function isOnlineAchievementOwner(ownerId = achievementStateOwnerId || getAchievementOwnerId()) {
+    return activeLeaderboardSource === 'global'
+        && userId
+        && userId !== 'local-player'
+        && ownerId === `global-${userId}`;
+}
+
 function loadAchievementStateForCurrentPlayer() {
     const ownerId = getAchievementOwnerId();
     if (achievementStateOwnerId === ownerId) return achievementState;
@@ -319,6 +347,68 @@ function saveAchievementState() {
     const storageKey = getAchievementStorageKey(achievementStateOwnerId || getAchievementOwnerId());
     if (!storageKey) return;
     schedulePersistentStatWrite(storageKey, JSON.stringify(achievementState));
+    scheduleCloudAchievementWrite();
+}
+
+function buildCloudAchievementPayload(saveData = achievementState) {
+    const safeSave = sanitizeAchievementSave(saveData);
+    return {
+        stats: safeSave.stats,
+        unlocked: safeSave.unlocked
+    };
+}
+
+async function readCloudAchievementState(onlineUserId = userId) {
+    if (!onlineUserId || onlineUserId === 'local-player') return sanitizeAchievementSave();
+    const { db, doc, getDoc } = await getFirestoreApi();
+    const snapshot = await getDoc(doc(db, ACHIEVEMENTS_COLLECTION, onlineUserId));
+    return snapshot.exists() ? sanitizeAchievementSave(snapshot.data()) : sanitizeAchievementSave();
+}
+
+async function writeCloudAchievementState(saveData = achievementState, onlineUserId = userId) {
+    if (!onlineUserId || onlineUserId === 'local-player') return;
+    const { db, doc, setDoc, serverTimestamp } = await getFirestoreApi();
+    await setDoc(doc(db, ACHIEVEMENTS_COLLECTION, onlineUserId), {
+        ...buildCloudAchievementPayload(saveData),
+        updatedAt: serverTimestamp()
+    }, { merge: true });
+}
+
+function scheduleCloudAchievementWrite() {
+    if (!isOnlineAchievementOwner()) return;
+    if (cloudAchievementWriteTimer) window.clearTimeout(cloudAchievementWriteTimer);
+    cloudAchievementWriteTimer = window.setTimeout(async () => {
+        cloudAchievementWriteTimer = null;
+        if (cloudAchievementWriteInFlight || !isOnlineAchievementOwner()) return;
+        cloudAchievementWriteInFlight = true;
+        try {
+            await writeCloudAchievementState(achievementState);
+        } catch (error) {
+            console.warn("Could not sync achievements to the cloud.", error);
+        } finally {
+            cloudAchievementWriteInFlight = false;
+        }
+    }, 650);
+}
+
+export async function syncOnlineAchievementsForCurrentPlayer() {
+    if (!userId || userId === 'local-player' || activeLeaderboardSource !== 'global') {
+        loadAchievementStateForCurrentPlayer();
+        return getAchievementProgress();
+    }
+
+    const ownerId = getAchievementOwnerId();
+    const localState = loadAchievementStateForCurrentPlayer();
+    try {
+        const cloudState = await readCloudAchievementState(userId);
+        achievementStateOwnerId = ownerId;
+        achievementState = mergeAchievementSaves(localState, cloudState);
+        saveAchievementState();
+        await writeCloudAchievementState(achievementState, userId);
+    } catch (error) {
+        console.warn("Could not load online achievements. Using local cached achievements.", error);
+    }
+    return getAchievementProgress();
 }
 
 function formatAchievementProgress(value, achievement) {

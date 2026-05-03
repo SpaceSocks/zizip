@@ -1,9 +1,9 @@
-import * as state from './state.js?v=mobile-portrait-90';
-import * as audio from './audio.js?v=mobile-portrait-90'; // Import the audio module
+import * as state from './state.js?v=mobile-portrait-91';
+import * as audio from './audio.js?v=mobile-portrait-91'; // Import the audio module
 // import { canvas } from './graphics.js'; // Removed import
-import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-90';
+import { ensureGameLoop, startGame as startGameLogic } from './game.js?v=mobile-portrait-91';
 // import * as playfab from './playfab.js'; // REMOVED
-import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-90';
+import { getFirebaseServices } from './firebaseConfig.js?v=mobile-portrait-91';
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -844,6 +844,7 @@ async function prepareOnlinePlayerForUser(user, successMessage = '') {
     hideGoogleAliasPrompt();
     state.setPlayerInfo(user.uid, gameAlias);
     state.setActiveLeaderboardSource('global');
+    await state.syncOnlineAchievementsForCurrentPlayer();
     setLocalPlayReady(false);
     clearEmailLoginFields();
     clearLegacySavedPassword();
@@ -1205,6 +1206,7 @@ async function handleAuthClick() {
             // Store relevant info (UID and Display Name)
             state.setPlayerInfo(userCredential.user.uid, alias);
             state.setActiveLeaderboardSource('global');
+            await state.syncOnlineAchievementsForCurrentPlayer();
             setLocalPlayReady(false);
             await offerBrowserPasswordSave(email, password, alias);
             clearLegacySavedPassword();
@@ -1216,6 +1218,7 @@ async function handleAuthClick() {
             const gameAlias = await resolveGameAliasForUser(userCredential.user);
             state.setPlayerInfo(userCredential.user.uid, gameAlias);
             state.setActiveLeaderboardSource('global');
+            await state.syncOnlineAchievementsForCurrentPlayer();
             setLocalPlayReady(false);
             await offerBrowserPasswordSave(email, password, userCredential.user.displayName || email);
             clearLegacySavedPassword();
@@ -1723,6 +1726,7 @@ async function initializeAuthStateListener() {
                     if (savedAlias) {
                         state.setPlayerInfo(user.uid, savedAlias);
                         state.setActiveLeaderboardSource('global');
+                        await state.syncOnlineAchievementsForCurrentPlayer();
                         setLocalPlayReady(false);
                         setOnlinePlayReady(true, savedAlias);
                         if (!pendingProvider) {
@@ -1731,6 +1735,7 @@ async function initializeAuthStateListener() {
                     } else if (requiresManualAlias(user)) {
                         state.setPlayerInfo(user.uid, 'Online Player');
                         state.setActiveLeaderboardSource('global');
+                        await state.syncOnlineAchievementsForCurrentPlayer();
                         setLocalPlayReady(false);
                         setOnlinePlayReady(false);
                         showGoogleAliasPrompt(user);
