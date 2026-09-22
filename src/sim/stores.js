@@ -26,11 +26,13 @@ export class Ants {
     this.memX = f(); this.memZ = f();
     this.pause = f();
     this.stuck = f();
+    this.dwell = f();      // seconds spent in the current task/sub-state
     this.alive = new Uint8Array(n);
     this.caste = new Uint8Array(n);
     this.task = new Uint8Array(n);
     this.sub = new Uint8Array(n);
     this.surf = new Uint8Array(n);
+    this.side = new Int8Array(n);     // which way round an obstacle (surface detours)
     this.mem = new Uint8Array(n);
     this.field = new Uint8Array(n);   // nav field being followed
     this.moving = new Uint8Array(n);  // 1 while walking (for animation)
@@ -51,7 +53,7 @@ export class Ants {
     this.id[i] = this.nextId++;
     this.carry[i] = -1; this.tgt[i] = -1; this.key[i] = -1;
     this.task[i] = 0; this.sub[i] = 0; this.mem[i] = 0; this.surf[i] = 0;
-    this.timer[i] = 0; this.pause[i] = 0; this.stuck[i] = 0; this.trail[i] = 0; this.walk[i] = 0;
+    this.timer[i] = 0; this.pause[i] = 0; this.stuck[i] = 0; this.dwell[i] = 0; this.trail[i] = 0; this.walk[i] = 0;
     return i;
   }
 

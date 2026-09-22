@@ -33,6 +33,7 @@ export const movement = {
 
   turnToward(i, target, rate, dt) {
     const A = this.ants;
+    if (A.surf[i] && A.stuck[i] > 0) { A.stuck[i] -= dt; return; }
     const d = angDiff(A.hd[i], target);
     const m = rate * dt;
     A.hd[i] += d > m ? m : d < -m ? -m : d;
@@ -97,7 +98,8 @@ export const movement = {
       // sharp corner: pivot mostly in place
       this.stepU(i, dt, sp * 0.3);
     } else if (!this.stepU(i, dt, sp)) {
-      A.hd[i] = want;
+      // blocked (lookahead/lane cut a corner): aim straight at the next cell's centre
+      A.hd[i] = Math.atan2(ty + 0.5 - A.y[i], tx + 0.5 - A.x[i]);
       A.stuck[i] += dt;
       if (A.stuck[i] > 1.5) { this.unstick(i); A.stuck[i] = 0; }
     } else A.stuck[i] = Math.max(0, A.stuck[i] - dt);
@@ -152,9 +154,6 @@ export const movement = {
     const dist = speed * dt;
     let nx = A.x[i] + Math.cos(A.hd[i]) * dist;
     let nz = A.z[i] + Math.sin(A.hd[i]) * dist;
-    let bounced = false;
-    if (nx < 1.2 || nx > W - 1.2) { A.hd[i] = Math.PI - A.hd[i]; nx = Math.max(1.2, Math.min(W - 1.2, nx)); bounced = true; }
-    if (nz > -0.4 || nz < -SURF_D + 1.2) { A.hd[i] = -A.hd[i]; nz = Math.max(-SURF_D + 1.2, Math.min(-0.4, nz)); bounced = true; }
     const st = this.stones;
     for (let k = 0; k < st.length; k++) {
       const s = st[k];
@@ -163,11 +162,17 @@ export const movement = {
       if (d2 < s.r * s.r) {
         const d = Math.sqrt(d2) || 1;
         nx = s.x + dx / d * s.r; nz = s.z + dz / d * s.r;
-        // slide around the stone
-        const tang = Math.atan2(dz, dx) + (angDiff(Math.atan2(dz, dx), A.hd[i]) > 0 ? Math.PI / 2 : -Math.PI / 2);
-        A.hd[i] = tang;
+        // slide around the stone, and keep going that way for a moment so the
+        // steering doesn't flip back and forth against it
+        if (A.stuck[i] <= 0) A.side[i] = angDiff(Math.atan2(dz, dx), A.hd[i]) > 0 ? 1 : -1;
+        const side = A.side[i];
+        A.hd[i] = Math.atan2(dz, dx) + side * Math.PI / 2;
+        A.stuck[i] = 0.9;
       }
     }
+    let bounced = false;
+    if (nx < 1.2 || nx > W - 1.2) { A.hd[i] = Math.PI - A.hd[i]; nx = Math.max(1.2, Math.min(W - 1.2, nx)); bounced = true; }
+    if (nz > -0.4 || nz < -SURF_D + 1.2) { A.hd[i] = -A.hd[i]; nz = Math.max(-SURF_D + 1.2, Math.min(-0.4, nz)); bounced = true; }
     A.x[i] = nx; A.z[i] = nz;
     A.y[i] = this.world.surfaceH(nx, nz);
     A.walk[i] += dist;
@@ -237,6 +242,7 @@ export const movement = {
 
   emerge(i, e) {
     const A = this.ants;
+    A.stuck[i] = 0;
     A.surf[i] = 1;
     A.x[i] = e.x + (this.rng.next() - 0.5) * 0.8;
     A.z[i] = e.z + (this.rng.next() - 0.5) * 0.6;

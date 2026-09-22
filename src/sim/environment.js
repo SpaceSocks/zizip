@@ -23,9 +23,11 @@ export const environment = {
     this.stones = [];
     const nStones = r.int(5, 9);
     for (let k = 0; k < nStones; k++) {
-      const x = r.range(6, W - 6), z = -r.range(2.5, SURF_D - 2.5);
+      const x = r.range(6, W - 6), rr = r.range(0.9, 2.6), z = -r.range(rr + 1.8, SURF_D - rr - 1.8);
       if (Math.abs(x - w.entrance.x) < 6 && z > -6) continue;
-      this.stones.push({ x, z, r: r.range(0.9, 2.6), h: r.range(0.6, 1.6), seed: r.int(0, 1e6) });
+      // keep a walkable gap between stones so they never form dead-end pockets
+      if (this.stones.some((s) => Math.hypot(s.x - x, s.z - z) < s.r + rr + 2.5)) continue;
+      this.stones.push({ x, z, r: rr, h: r.range(0.6, 1.6), seed: r.int(0, 1e6) });
     }
     // plants: they drop seeds; roots were grown below some of them
     this.plants = [];
@@ -115,6 +117,7 @@ export const environment = {
       if (kk < 0) return;
       const x = Math.max(2, Math.min(W - 2, p.x + r.gauss() * 3.5));
       const z = Math.max(-SURF_D + 1.5, Math.min(-0.6, p.z + r.gauss() * 2.5));
+      if (this.stones.some((s) => Math.hypot(s.x - x, s.z - z) < s.r + 0.6)) { this.items.release(kk); continue; }
       this.items.x[kk] = x; this.items.z[kk] = z;
       this.items.y[kk] = this.world.surfaceH(x, z);
       this.items.rot[kk] = r.range(0, 6.28);
@@ -385,16 +388,16 @@ export const environment = {
       if (c.biters > 0 && !c.passive && r.next() < dt * 0.45) {
         let bi = -1, bd = (c.r + 1.2) ** 2;
         for (let i = 0; i < A.hi; i++) {
-          if (!A.alive[i] || !A.surf[i] || A.task[i] !== T_DEFEND) continue;
+          if (!A.alive[i] || A.task[i] !== T_DEFEND || A.sub[i] !== 2 || A.tgt[i] !== c.id) continue;
           const d = (A.x[i] - c.x) ** 2 + (A.z[i] - c.z) ** 2;
           if (d < bd) { bd = d; bi = i; }
         }
-        if (bi >= 0) { c.biters = Math.max(0, c.biters - 1); this.kill(bi, 'predator'); c.kills++; this.pher.depositS(P_ALARM, c.x, c.z, 5); }
+        if (bi >= 0) { this.kill(bi, 'predator'); c.kills++; this.pher.depositS(P_ALARM, c.x, c.z, 5); }
       }
       if (c.biters > 0 && c.passive && c.kind === 'beetle' && r.next() < dt * 0.12) {
         // a beetle's jaws occasionally catch an attacker
         for (let i = 0; i < A.hi; i++) {
-          if (A.alive[i] && A.surf[i] && A.task[i] === T_DEFEND && (A.x[i] - c.x) ** 2 + (A.z[i] - c.z) ** 2 < (c.r + 1) ** 2) { c.biters = Math.max(0, c.biters - 1); this.kill(i, 'predator'); break; }
+          if (A.alive[i] && A.task[i] === T_DEFEND && A.sub[i] === 2 && A.tgt[i] === c.id) { this.kill(i, 'predator'); break; }
         }
       }
       if (c.hp < c.maxHp * 0.3 && c.kind === 'spider' && !c.leaving) { c.leaving = true; this.logEvent('The wounded spider retreats', 'win'); }

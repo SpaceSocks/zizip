@@ -152,6 +152,9 @@ export const chambers = {
   placeBrood(b, ch, cell) {
     const B = this.brood, r = this.rng;
     if (cell < 0 || this.world.type[cell] !== TUNNEL || this.world.chamberOf[cell] !== ch.id) cell = this.stackSpot(ch, true).cell;
+    if (cell < 0) { // chamber has no floor yet: lie loose at its centre
+      B.chamber[b] = ch.id; B.cell[b] = -1; B.x[b] = ch.cx; B.y[b] = ch.cy; B.z[b] = -1; return;
+    }
     const n = ch.stack.get(cell) || 0;
     ch.stack.set(cell, n + 1);
     B.chamber[b] = ch.id; B.cell[b] = cell;
@@ -166,11 +169,12 @@ export const chambers = {
   unstackBrood(b) {
     const B = this.brood;
     const ch = this.chambers[B.chamber[b]];
+    // only brood that was actually placed on a floor cell is counted
     if (ch && B.cell[b] >= 0) {
       const n = ch.stack.get(B.cell[b]) || 0;
       if (n > 0) ch.stack.set(B.cell[b], n - 1);
       ch.broodCount = Math.max(0, ch.broodCount - 1);
-    } else if (ch) ch.broodCount = Math.max(0, ch.broodCount - 1);
+    }
     B.cell[b] = -1;
   },
 

@@ -165,7 +165,19 @@ export class Sim {
         if (!A.surf[i] && A.pause[i] <= 0 && this.occ[(A.y[i] | 0) * W + (A.x[i] | 0)] >= 2 && A.carry[i] < 0 && this.rng.chance(0.03)) A.pause[i] = this.rng.range(0.4, 1.1);
       }
       if (A.pause[i] > 0) { A.pause[i] -= dt; continue; }
+      const ts = A.task[i] * 32 + A.sub[i];
       this.updateAnt(i, dt, think);
+      // watchdog: an ant that has been in one state for minutes gives up on it
+      if (A.task[i] * 32 + A.sub[i] === ts) {
+        A.dwell[i] += dt;
+        if (A.dwell[i] > 240 && A.task[i] !== T_IDLE) {
+          A.dwell[i] = 0;
+          this.releaseClaims(i);
+          if (A.carry[i] >= 0) this.dropCarried(i);
+          this.unstick(i);
+          this.decide(i);
+        }
+      } else A.dwell[i] = 0;
     }
     if (this.queen.alive) this.updateQueen(dt);
     if (this.tick % 5 === 0) this.updateBrood(dt * 5);
@@ -277,7 +289,8 @@ export class Sim {
           B.starve[b] += dt;
           if (B.starve[b] > DAY * 0.6) {
             if (B.carried[b]) { const i = B.carrier[b]; if (i >= 0) this.ants.tgt[i] = -1; }
-            this.unstackBrood(b); B.release(b);
+            if (!B.carried[b]) this.unstackBrood(b);
+            B.release(b);
             this.stats.larvaeLost = (this.stats.larvaeLost || 0) + 1;
             // starving colonies recycle their brood: the queen gets the protein
             if (this.queen.alive) this.queen.fed = Math.min(1, this.queen.fed + 0.12);

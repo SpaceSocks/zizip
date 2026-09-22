@@ -110,6 +110,11 @@ export const colony = {
       const s = this.sourceById(A.tgt[i]);
       if (s) s.attached = Math.max(0, s.attached - 1);
     }
+    if (A.task[i] === T_DEFEND && A.sub[i] === DF_BITE) {
+      const c = this.creatureById(A.tgt[i]);
+      if (c) c.biters = Math.max(0, c.biters - 1);
+      A.sub[i] = DF_BACK;
+    }
   },
 
   // put an underground item on the tunnel floor
@@ -223,8 +228,9 @@ export const colony = {
     // hunger interrupt: eat what you carry, or go to the granary
     if (think && A.energy[i] < 0.15 && A.task[i] !== T_EAT) {
       const k = A.carry[i];
-      if (k >= 0 && isFood(this.items.kind[k])) { A.carry[i] = -1; this.consume(i, k); }
+      if (k >= 0 && isFood(this.items.kind[k])) { A.carry[i] = -1; this.consume(i, k); this.releaseClaims(i); this.decide(i); }
       else if (!A.surf[i] && this.stock.total > 0.5 && A.carry[i] < 0) { this.releaseClaims(i); A.task[i] = T_EAT; A.sub[i] = 0; A.timer[i] = 0; }
+      else if (A.surf[i] && A.carry[i] < 0 && A.task[i] !== T_IDLE && A.task[i] !== T_DEFEND) { this.releaseClaims(i); A.task[i] = T_IDLE; A.sub[i] = I_HOMEWARD; }
     }
     // interrupt: alarm nearby underground pulls workers into defence
     if (think && !A.surf[i] && A.task[i] !== T_DEFEND && A.carry[i] < 0 && A.task[i] !== T_NURSE) {
@@ -274,7 +280,7 @@ export const colony = {
         const k = ch ? this.takeStored(ch, false) : -1;
         if (k < 0) {
           const k2 = this.takeAnyStored(false);
-          if (k2 < 0) { this.decide(i); A.task[i] = T_IDLE; return; }
+          if (k2 < 0) { A.task[i] = T_IDLE; A.sub[i] = I_GO; A.timer[i] = 0; return; }
           this.consume(i, k2);
         } else this.consume(i, k);
         A.sub[i] = E_TAKE; A.timer[i] = 2.5; A.moving[i] = 2;
@@ -408,7 +414,7 @@ export const colony = {
       }
       case F_HOME: {
         if (!A.surf[i]) { this.decide(i); return; }
-        if (this.goHomeS(i, dt, false) === ARRIVED) this.decide(i);
+        if (this.goHomeS(i, dt, false) === ARRIVED) { this.decide(i); return; }
         if (think) this.lookForFood(i);
         return;
       }
@@ -548,6 +554,10 @@ export const colony = {
           const rad = r.range(2.2, 4.5) + Math.sqrt(w.dirtDeposited) * 0.05;
           A.tx[i] = e.x + Math.cos(a) * rad;
           A.ty[i] = Math.min(-0.5, Math.max(-12, e.z + Math.sin(a) * rad * 0.8));
+          for (const st of this.stones) {
+            const dx = A.tx[i] - st.x, dz = A.ty[i] - st.z, d = Math.hypot(dx, dz);
+            if (d < st.r + 0.6) { A.tx[i] = st.x + dx / (d || 1) * (st.r + 0.8); A.ty[i] = st.z + dz / (d || 1) * (st.r + 0.8); }
+          }
           A.sub[i] = D_DUMP;
         } else if (res === LOST) { this.dropCarried(i); this.decide(i); }
         return;
@@ -652,6 +662,8 @@ export const colony = {
           if (job === J_MOVE) {
             B.carried[b] = 1; B.carrier[b] = i;
             this.unstackBrood(b);
+            const d = this.broodDest(b);
+            A.memZ[i] = d ? d.id : -1;
             A.sub[i] = N_CARRY;
           } else { A.sub[i] = N_FEED; A.timer[i] = 1.6; }
         }
@@ -659,7 +671,8 @@ export const colony = {
       }
       case N_CARRY: {
         if (!B.alive[b]) { this.decide(i); return; }
-        const dest = this.broodDest(b);
+        let dest = A.memZ[i] >= 0 ? this.chambers[A.memZ[i]] : null;
+        if (dest && dest.flooded) { dest = this.broodDest(b); A.memZ[i] = dest ? dest.id : -1; }
         const res = dest ? this.goChamber(i, dest, dt) : this.goField(i, NF_BROOD, 0, dt);
         if (res === ARRIVED) {
           const ch = dest || this.chamberAt(A.x[i], A.y[i]);
