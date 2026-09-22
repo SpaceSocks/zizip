@@ -102,7 +102,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .role-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
 
 /* labels */
-#labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+#labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+.panel { z-index: 1; }
+.overlay { z-index: 2; }
 .lbl { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; font-size: 11px; padding: 2px 7px; border-radius: 999px; background: rgba(20, 14, 10, 0.72); border: 1px solid var(--line); color: var(--text); }
 .lbl small { color: var(--muted); margin-left: 5px; }
 .lbl.building { border-style: dashed; color: #ffd9a0; }
@@ -122,24 +124,23 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 
 /* small screens */
 @media (max-width: 760px) {
-  .stats { width: calc(100vw - 28px); max-width: 300px; top: 10px; left: 10px; padding: 9px 12px; }
-  .stat-grid { grid-template-columns: repeat(4, 1fr); gap: 4px 8px; }
+  .stats { top: 10px; left: 10px; right: 10px; width: auto; padding: 8px 12px; }
+  .stats .clock { margin-bottom: 4px; }
+  .stat-grid { grid-template-columns: repeat(4, 1fr); gap: 2px 8px; }
   .stat-grid b { font-size: 15px; }
   .stat-grid span { font-size: 9.5px; }
   .sub, .legend { display: none; }
-  #spark { height: 30px; }
-  .toggles { top: auto; bottom: 64px; right: 10px; max-width: calc(100vw - 20px); }
-  .toggles button { padding: 4px 7px; font-size: 11px; }
+  #spark { height: 26px; margin-top: 4px; }
   .journal { display: none; }
-  .speed { bottom: 10px; left: 10px; transform: none; }
-  .speed button { min-width: 34px; padding: 5px 6px; }
-  .seedbox { display: none; }
-  .inspector { top: auto; bottom: 108px; right: 10px; left: 10px; width: auto; }
-  .perf { top: auto; bottom: 108px; }
-}
-@media (max-width: 760px) and (min-height: 700px) {
-  .seedbox { display: flex; top: 10px; bottom: auto; right: 10px; }
+  .speed { bottom: 10px; left: 10px; right: 10px; transform: none; justify-content: space-between; }
+  .speed button { flex: 1; min-width: 0; padding: 6px 4px; }
+  .toggles { top: auto; bottom: 58px; left: 10px; right: 10px; max-width: none; justify-content: space-between; flex-wrap: nowrap; }
+  .toggles button { flex: 1; padding: 5px 2px; font-size: 11px; }
+  .seedbox { bottom: 104px; right: 10px; padding: 4px; }
   .seedbox label { display: none; }
-  .seedbox input { width: 70px; }
-  .stats { max-width: calc(100vw - 20px - 260px); min-width: 170px; }
+  .seedbox input { width: 74px; font-size: 12px; }
+  .seedbox button { padding: 4px 8px; font-size: 12px; }
+  .inspector { top: auto; bottom: 148px; right: 10px; left: 10px; width: auto; max-height: 45vh; overflow: auto; }
+  .perf { top: auto; bottom: 148px; left: 10px; right: auto; }
+  .lbl { font-size: 10px; }
 }

@@ -24,6 +24,7 @@ export class World {
     this.baseSurf = new Float32Array(SV * SVZ);
     this.mound = new Float32Array(SV * SVZ);
     this.moundVersion = 0;
+    this.moundDirty = null;
     this.dirtyChunks = new Set();
     this.topoVersion = 0;
     this.moistVersion = 0;
@@ -241,6 +242,10 @@ export class World {
     const iz = Math.round(Math.max(0, Math.min(SURF_D, -z)));
     this.mound[iz * SV + ix] += amount;
     this.relaxMound(ix, iz, 3);
+    // region the renderer needs to refresh
+    const md = this.moundDirty || (this.moundDirty = { x0: ix, x1: ix, z0: iz, z1: iz });
+    md.x0 = Math.min(md.x0, ix - 4); md.x1 = Math.max(md.x1, ix + 4);
+    md.z0 = Math.min(md.z0, Math.max(0, iz - 4)); md.z1 = Math.max(md.z1, iz + 4);
     this.dirtDeposited++;
     this.moundVersion++;
   }

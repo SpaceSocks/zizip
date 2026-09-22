@@ -355,8 +355,8 @@ export const environment = {
       hd: fromLeft ? 0 : Math.PI, walk: 0, timer: 0, target: -1, biters: 0, fleeing: 0, leaving: false,
       lastBit: -99, eatTimer: 0, kills: 0, born: this.time, y: 0,
     };
-    if (kind === 'spider') Object.assign(c, { hp: 34, maxHp: 34, r: 1.5, speed: 3.8, hostile: true, life: DAY * r.range(0.25, 0.45) });
-    if (kind === 'beetle') Object.assign(c, { hp: 55, maxHp: 55, r: 1.3, speed: 1.3, hostile: true, life: DAY * r.range(0.2, 0.4), passive: true });
+    if (kind === 'spider') Object.assign(c, { hp: 70, maxHp: 70, r: 1.5, speed: 3.8, hostile: true, life: DAY * r.range(0.25, 0.45) });
+    if (kind === 'beetle') Object.assign(c, { hp: 80, maxHp: 80, r: 1.3, speed: 1.3, hostile: true, life: DAY * r.range(0.2, 0.4), passive: true });
     if (kind === 'caterpillar') Object.assign(c, { hp: 14, maxHp: 14, r: 1.1, speed: 0.45, hostile: true, life: DAY * r.range(0.3, 0.6), passive: true });
     c.y = this.world.surfaceH(c.x, c.z);
     this.creatures.push(c);
@@ -383,6 +383,22 @@ export const environment = {
         continue;
       }
       if (c.timer > c.life && !c.leaving) c.leaving = true;
+      // predators fight back against the ants clinging to them
+      if (c.biters > 0 && !c.passive && r.next() < dt * 0.45) {
+        let bi = -1, bd = (c.r + 1.2) ** 2;
+        for (let i = 0; i < A.hi; i++) {
+          if (!A.alive[i] || !A.surf[i] || A.task[i] !== T_DEFEND) continue;
+          const d = (A.x[i] - c.x) ** 2 + (A.z[i] - c.z) ** 2;
+          if (d < bd) { bd = d; bi = i; }
+        }
+        if (bi >= 0) { c.biters = Math.max(0, c.biters - 1); this.kill(bi, 'predator'); c.kills++; this.pher.depositS(P_ALARM, c.x, c.z, 5); }
+      }
+      if (c.biters > 0 && c.passive && c.kind === 'beetle' && r.next() < dt * 0.12) {
+        // a beetle's jaws occasionally catch an attacker
+        for (let i = 0; i < A.hi; i++) {
+          if (A.alive[i] && A.surf[i] && A.task[i] === T_DEFEND && (A.x[i] - c.x) ** 2 + (A.z[i] - c.z) ** 2 < (c.r + 1) ** 2) { c.biters = Math.max(0, c.biters - 1); this.kill(i, 'predator'); break; }
+        }
+      }
       if (c.hp < c.maxHp * 0.3 && c.kind === 'spider' && !c.leaving) { c.leaving = true; this.logEvent('The wounded spider retreats', 'win'); }
       let tx = c.x + Math.cos(c.hd) * 5, tz = c.z + Math.sin(c.hd) * 5;
       let sp = c.speed;

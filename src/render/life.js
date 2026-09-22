@@ -4,6 +4,13 @@ import * as THREE from 'three';
 import { W, SURF_D, F_BERRY, F_FRUIT, F_INSECT, F_SUGAR, F_CARCASS } from '../sim/constants.js';
 import { Rng } from '../sim/rng.js';
 
+function disposeObj(g) {
+  g.traverse((o) => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) for (const m of [].concat(o.material)) m.dispose();
+  });
+}
+
 const flat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.55, ...extra });
 
 function beetleModel(shell = '#23301f', legs = '#1a1a14', scale = 1) {
@@ -102,7 +109,10 @@ export class Life {
   }
 
   dispose() {
-    this.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+    this.group.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) for (const m of [].concat(o.material)) { if (m.map) m.map.dispose(); m.dispose(); }
+    });
     this.scene.remove(this.group);
   }
 
@@ -213,7 +223,7 @@ export class Life {
       o.g.rotation.y = s.rot;
     }
     for (const [id, o] of this.sourceObjs) {
-      if (!seen.has(id)) { this.group.remove(o.g); o.g.traverse((m) => m.geometry && m.geometry.dispose()); this.sourceObjs.delete(id); }
+      if (!seen.has(id)) { this.group.remove(o.g); disposeObj(o.g); this.sourceObjs.delete(id); }
     }
     // creatures
     const seenC = new Set();
@@ -256,7 +266,7 @@ export class Life {
       o.g.traverse((m) => { if (m.isMesh && m.material.emissive) m.material.emissive.set(hurt ? '#551010' : '#000000'); });
     }
     for (const [id, o] of this.creatureObjs) {
-      if (!seenC.has(id)) { this.group.remove(o.g); this.creatureObjs.delete(id); }
+      if (!seenC.has(id)) { this.group.remove(o.g); disposeObj(o.g); this.creatureObjs.delete(id); }
     }
     this.updateFlies(dt, time);
     // fireflies at night

@@ -75,7 +75,7 @@ export class Sky {
     for (let i = 0; i < rn; i++) {
       this.rainSeeds[i * 3] = Math.random() * (W + 20) - 10;
       this.rainSeeds[i * 3 + 1] = Math.random();
-      this.rainSeeds[i * 3 + 2] = -Math.random() * (SURF_D + 30) + 12;
+      this.rainSeeds[i * 3 + 2] = -0.4 - Math.random() * (SURF_D + 30);
     }
     const rg = new THREE.BufferGeometry();
     rg.setAttribute('position', new THREE.BufferAttribute(rp, 3));

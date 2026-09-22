@@ -940,7 +940,7 @@ export const colony = {
         A.y[i] = this.world.surfaceH(A.x[i], A.z[i]) + 0.1;
         A.hd[i] = a + Math.PI;
         A.moving[i] = 2;
-        c.hp -= dt * (A.caste[i] === MAJOR ? 2.6 : 1);
+        c.hp -= dt * (A.caste[i] === MAJOR ? 1.8 : 0.5);
         c.lastBit = this.time;
         this.pher.depositS(P_ALARM, A.x[i], A.z[i], 2 * dt);
         if (A.timer[i] > 25) { c.biters = Math.max(0, c.biters - 1); A.sub[i] = DF_BACK; }

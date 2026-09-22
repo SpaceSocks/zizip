@@ -58,7 +58,12 @@ export class Overlays {
     this.lastWater = false;
   }
 
-  dispose() { this.scene.remove(this.group); }
+  dispose() {
+    this.scene.remove(this.group);
+    for (const t of [this.surfTex, this.underTex, this.waterTex]) t.dispose();
+    for (const m of [this.surfMesh, this.underMesh, this.waterMesh, this.graph, this.nodes]) m.material.dispose();
+    this.underMesh.geometry.dispose(); this.waterMesh.geometry.dispose(); this.graph.geometry.dispose(); this.nodes.geometry.dispose();
+  }
 
   update(dt, opts) {
     const sim = this.sim;

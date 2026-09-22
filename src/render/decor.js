@@ -74,7 +74,10 @@ export class Decor {
   }
 
   dispose() {
-    this.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+    this.group.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) for (const m of [].concat(o.material)) { if (m.map) m.map.dispose(); m.dispose(); }
+    });
     this.scene.remove(this.group);
   }
 

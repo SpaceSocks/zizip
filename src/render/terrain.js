@@ -31,13 +31,15 @@ export class Terrain {
     this.buildBackWall();
     this.buildRocksAndRoots();
     this.buildSurface();
-    this.lastMound = -1;
     this.lastMoist = this.world.moistVersion;
     this.moundTimer = 0;
   }
 
   dispose() {
-    this.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+    this.group.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) for (const m of [].concat(o.material)) { if (m.map) m.map.dispose(); m.dispose(); }
+    });
     this.scene.remove(this.group);
   }
 
@@ -305,99 +307,125 @@ export class Terrain {
   }
 
   // ---- surface ground ----
+  // Quads are laid out in a fixed order (iz * W + ix, then the front skirt)
+  // so the dirt mound can be updated in place, region by region.
   buildSurface() {
     const nTri = W * SURF_D * 2 + W * 4;
     const geo = new THREE.BufferGeometry();
     this.surfPos = new Float32Array(nTri * 9);
     this.surfCol = new Float32Array(nTri * 9);
+    this.surfNrm = new Float32Array(nTri * 9);
     this.surfUv = new Float32Array(nTri * 6);
     geo.setAttribute('position', new THREE.BufferAttribute(this.surfPos, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(this.surfNrm, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(this.surfCol, 3));
     geo.setAttribute('uv', new THREE.BufferAttribute(this.surfUv, 2));
     this.surfGeo = geo;
-    // per-vertex grassiness
-    this.grassy = new Float32Array(SV * SVZ);
-    for (let iz = 0; iz < SVZ; iz++) for (let ix = 0; ix < SV; ix++) {
-      const g = fbm(ix * 0.045, iz * 0.12, this.seed + 41, 3);
-      this.grassy[iz * SV + ix] = Math.max(0, Math.min(1, (g - 0.38) * 2.6)) * Math.min(1, iz / 2.5 + 0.3);
+    // static base colour per quad: grass / bare dirt with a little jitter
+    this.quadBase = new Float32Array(W * SURF_D * 3);
+    const c = new THREE.Color();
+    for (let iz = 0; iz < SURF_D; iz++) for (let ix = 0; ix < W; ix++) {
+      const f = fbm(ix * 0.045, iz * 0.12, this.seed + 41, 3);
+      const g = Math.max(0, Math.min(1, (f - 0.38) * 2.6)) * Math.min(1, iz / 2.5 + 0.3);
+      c.copy(DIRT).lerp(g > 0.5 ? GRASS2 : GRASS, g).multiplyScalar(0.92 + hash2(ix, iz, this.seed + 71) * 0.16);
+      const k = (iz * W + ix) * 3;
+      this.quadBase[k] = c.r; this.quadBase[k + 1] = c.g; this.quadBase[k + 2] = c.b;
     }
+    this.surfH = new Float32Array(SV * SVZ);
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95 });
     this.surface = new THREE.Mesh(geo, mat);
     this.surface.receiveShadow = true;
+    this.surface.frustumCulled = false;
     this.group.add(this.surface);
-    this.updateSurface();
+    this.updateSurface(null);
   }
 
-  updateSurface() {
-    const w = this.world, pos = this.surfPos, col = this.surfCol, uv = this.surfUv;
-    const h = (ix, iz) => w.baseSurf[iz * SV + ix] + w.mound[iz * SV + ix] - this.craterDip(ix, -iz);
-    const colorAt = (ix, iz, out) => {
-      const g = this.grassy[iz * SV + ix];
-      out.copy(DIRT).lerp(g > 0.5 ? GRASS2 : GRASS, g);
-      const m = w.mound[iz * SV + ix];
-      if (m > 0.02) out.lerp(MOUND, Math.min(1, m * 1.6));
-      const dip = this.craterDip(ix, -iz);
-      if (dip > 0) out.multiplyScalar(1 - dip * 0.5);
-      const midden = this.sim.midden;
-      if (midden) {
-        const dm = Math.hypot(ix - midden.x, -iz - midden.z);
-        if (dm < 3) out.lerp(tmpC.set('#4a3a2c'), Math.min(0.6, midden.count * 0.01) * (1 - dm / 3));
-      }
-      const m2 = w.moist[Math.max(0, w.ground[Math.min(W - 1, ix)] - 2) * W + Math.min(W - 1, ix)] / 255;
-      out.multiplyScalar(1.06 - m2 * 0.25);
-      return out;
+  updateSurface(region) {
+    const w = this.world, pos = this.surfPos, col = this.surfCol, nrm = this.surfNrm, uv = this.surfUv, hv = this.surfH;
+    const x0 = region ? Math.max(0, region.x0 - 1) : 0, x1 = region ? Math.min(W - 1, region.x1 + 1) : W - 1;
+    const z0 = region ? Math.max(0, region.z0 - 1) : 0, z1 = region ? Math.min(SURF_D - 1, region.z1 + 1) : SURF_D - 1;
+    for (let iz = z0; iz <= z1 + 1; iz++) for (let ix = x0; ix <= x1 + 1; ix++) {
+      const i = iz * SV + ix;
+      hv[i] = w.baseSurf[i] + w.mound[i] - this.craterDip(ix, -iz);
+    }
+    const midden = this.sim.midden;
+    const mTint = midden ? Math.min(0.6, midden.count * 0.01) : 0;
+    const MID = tmpC.set('#4a3a2c');
+    const mr = MID.r, mg = MID.g, mb = MID.b;
+    let o = 0;
+    const put = (x, y, z, r, g, b, u0, u1) => {
+      pos[o] = x; pos[o + 1] = y; pos[o + 2] = z;
+      col[o] = r; col[o + 1] = g; col[o + 2] = b;
+      uv[(o / 3) * 2] = u0; uv[(o / 3) * 2 + 1] = u1;
+      o += 3;
     };
-    const c = new THREE.Color();
-    let p = 0, q = 0, u = 0;
-    const pushV = (ix, iz, y, cc) => {
-      pos[p++] = ix; pos[p++] = y; pos[p++] = -iz;
-      col[q++] = cc.r; col[q++] = cc.g; col[q++] = cc.b;
-      uv[u++] = ix / W; uv[u++] = iz / SURF_D;
+    const tri = (base) => {
+      // flat normal for the triangle starting at float offset base
+      const ax = pos[base], ay = pos[base + 1], az = pos[base + 2];
+      const ux = pos[base + 3] - ax, uy = pos[base + 4] - ay, uz = pos[base + 5] - az;
+      const vx = pos[base + 6] - ax, vy = pos[base + 7] - ay, vz = pos[base + 8] - az;
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const l = Math.hypot(nx, ny, nz) || 1;
+      if (ny < 0 && Math.abs(nz) < 0.9 * l) { nx = -nx; ny = -ny; nz = -nz; }
+      nx /= l; ny /= l; nz /= l;
+      for (let k = 0; k < 9; k += 3) { nrm[base + k] = nx; nrm[base + k + 1] = ny; nrm[base + k + 2] = nz; }
     };
-    for (let iz = 0; iz < SURF_D; iz++) {
-      for (let ix = 0; ix < W; ix++) {
-        const shade = 0.92 + hash2(ix, iz, this.seed + 71) * 0.16;
-        colorAt(ix, iz, c).multiplyScalar(shade);
-        const a = h(ix, iz), b = h(ix + 1, iz), d = h(ix, iz + 1), e = h(ix + 1, iz + 1);
-        // alternate diagonals for a less regular look
-        if ((ix + iz) & 1) {
-          pushV(ix, iz, a, c); pushV(ix + 1, iz, b, c); pushV(ix + 1, iz + 1, e, c);
-          c.multiplyScalar(0.96);
-          pushV(ix, iz, a, c); pushV(ix + 1, iz + 1, e, c); pushV(ix, iz + 1, d, c);
-        } else {
-          pushV(ix, iz, a, c); pushV(ix + 1, iz, b, c); pushV(ix, iz + 1, d, c);
-          c.multiplyScalar(0.96);
-          pushV(ix + 1, iz, b, c); pushV(ix + 1, iz + 1, e, c); pushV(ix, iz + 1, d, c);
+    for (let iz = z0; iz <= z1; iz++) {
+      const moistRow = true;
+      for (let ix = x0; ix <= x1; ix++) {
+        const qk = iz * W + ix;
+        let r = this.quadBase[qk * 3], g = this.quadBase[qk * 3 + 1], b = this.quadBase[qk * 3 + 2];
+        const m = w.mound[iz * SV + ix];
+        if (m > 0.02) { const t = Math.min(1, m * 1.6); r += (MOUND.r - r) * t; g += (MOUND.g - g) * t; b += (MOUND.b - b) * t; }
+        const dip = this.craterDip(ix, -iz);
+        if (dip > 0) { r *= 1 - dip * 0.5; g *= 1 - dip * 0.5; b *= 1 - dip * 0.5; }
+        if (mTint > 0) {
+          const dm = Math.hypot(ix - midden.x, -iz - midden.z);
+          if (dm < 3) { const t = mTint * (1 - dm / 3); r += (mr - r) * t; g += (mg - g) * t; b += (mb - b) * t; }
         }
+        if (moistRow) {
+          const cx = Math.min(W - 1, ix);
+          const wet = 1.06 - w.moist[Math.max(0, w.ground[cx] - 2) * W + cx] / 255 * 0.25;
+          r *= wet; g *= wet; b *= wet;
+        }
+        const a = hv[iz * SV + ix], bb = hv[iz * SV + ix + 1], d = hv[(iz + 1) * SV + ix], e = hv[(iz + 1) * SV + ix + 1];
+        o = qk * 18;
+        const base = o;
+        const u0 = ix / W, v0 = iz / SURF_D, u1 = (ix + 1) / W, v1 = (iz + 1) / SURF_D;
+        if ((ix + iz) & 1) {
+          put(ix, a, -iz, r, g, b, u0, v0); put(ix + 1, bb, -iz, r, g, b, u1, v0); put(ix + 1, e, -iz - 1, r, g, b, u1, v1);
+          put(ix, a, -iz, r * 0.96, g * 0.96, b * 0.96, u0, v0); put(ix + 1, e, -iz - 1, r * 0.96, g * 0.96, b * 0.96, u1, v1); put(ix, d, -iz - 1, r * 0.96, g * 0.96, b * 0.96, u0, v1);
+        } else {
+          put(ix, a, -iz, r, g, b, u0, v0); put(ix + 1, bb, -iz, r, g, b, u1, v0); put(ix, d, -iz - 1, r, g, b, u0, v1);
+          put(ix + 1, bb, -iz, r * 0.96, g * 0.96, b * 0.96, u1, v0); put(ix + 1, e, -iz - 1, r * 0.96, g * 0.96, b * 0.96, u1, v1); put(ix, d, -iz - 1, r * 0.96, g * 0.96, b * 0.96, u0, v1);
+        }
+        tri(base); tri(base + 9);
       }
     }
     // front skirt: covers the seam between the surface and the soil section,
     // and shows the excavated mound in cross-section against the glass
-    const quad = (x0, x1, y00, y01, y10, y11, cc) => {
-      // (x0,y00)-(x1,y01) bottom edge, (x0,y10)-(x1,y11) top edge
-      const vs = [[x0, y00], [x1, y01], [x1, y11], [x0, y00], [x1, y11], [x0, y10]];
-      for (const [vx, vy] of vs) {
-        pos[p++] = vx; pos[p++] = vy; pos[p++] = 0.03;
-        col[q++] = cc.r; col[q++] = cc.g; col[q++] = cc.b;
-        uv[u++] = 0; uv[u++] = 0;
+    if (z0 === 0) {
+      const skirt = W * SURF_D * 18;
+      const quad = (x0q, x1q, y00, y01, y10, y11, cr, cg, cb) => {
+        const start = o;
+        put(x0q, y00, 0.03, cr, cg, cb, 0, 0); put(x1q, y01, 0.03, cr, cg, cb, 0, 0); put(x1q, y11, 0.03, cr, cg, cb, 0, 0);
+        put(x0q, y00, 0.03, cr, cg, cb, 0, 0); put(x1q, y11, 0.03, cr, cg, cb, 0, 0); put(x0q, y10, 0.03, cr, cg, cb, 0, 0);
+        for (let k = start; k < o; k += 3) { nrm[k] = 0; nrm[k + 1] = 0; nrm[k + 2] = 1; }
+      };
+      for (let ix = x0; ix <= x1; ix++) {
+        o = skirt + ix * 36;
+        const b0 = w.baseSurf[ix], b1 = w.baseSurf[ix + 1];
+        const top0 = hv[ix], top1 = hv[ix + 1];
+        const isEntrance = this.sim.entrances.some((e) => ix >= e.cellX - 1 && ix <= e.cellX + 2);
+        const sh = 0.9 + hash2(ix, 7, this.seed) * 0.2;
+        const bot = isEntrance ? Math.min(b0, b1) - 0.05 : Math.min(w.ground[Math.min(W - 1, ix)], b0, b1) - 1.2;
+        quad(ix, ix + 1, bot, bot, Math.min(b0, top0), Math.min(b1, top1), TOPSOIL.r * sh, TOPSOIL.g * sh, TOPSOIL.b * sh);
+        const sm = 0.85 + hash2(ix, 9, this.seed) * 0.25;
+        quad(ix, ix + 1, Math.min(b0, top0), Math.min(b1, top1), Math.max(b0, top0), Math.max(b1, top1), MOUND.r * sm, MOUND.g * sm, MOUND.b * sm);
       }
-    };
-    const c2 = new THREE.Color();
-    for (let ix = 0; ix < W; ix++) {
-      const b0 = w.baseSurf[ix], b1 = w.baseSurf[ix + 1];
-      const top0 = h(ix, 0), top1 = h(ix + 1, 0);
-      const isEntrance = this.sim.entrances.some((e) => ix >= e.cellX - 1 && ix <= e.cellX + 2);
-      c.copy(TOPSOIL).multiplyScalar(0.9 + hash2(ix, 7, this.seed) * 0.2);
-      const bot = isEntrance ? Math.min(b0, b1) - 0.05 : Math.min(w.ground[Math.min(W - 1, ix)], b0, b1) - 1.2;
-      quad(ix, ix + 1, bot, bot, Math.min(b0, top0), Math.min(b1, top1), c);
-      c2.copy(MOUND).multiplyScalar(0.85 + hash2(ix, 9, this.seed) * 0.25);
-      quad(ix, ix + 1, Math.min(b0, top0), Math.min(b1, top1), Math.max(b0, top0), Math.max(b1, top1), c2);
     }
-    this.surfGeo.attributes.position.needsUpdate = true;
-    this.surfGeo.attributes.color.needsUpdate = true;
-    this.surfGeo.attributes.uv.needsUpdate = true;
-    this.surfGeo.computeVertexNormals();
-    this.surfGeo.computeBoundingSphere();
+    const ga = this.surfGeo.attributes;
+    ga.position.needsUpdate = true; ga.color.needsUpdate = true; ga.normal.needsUpdate = true; ga.uv.needsUpdate = true;
   }
 
   craterDip(x, z) {
@@ -411,29 +439,33 @@ export class Terrain {
 
   update(dt) {
     const w = this.world;
-    // rebuild a few dirty chunks per frame
+    // rebuild dirty chunks within a small time budget per frame
     if (w.dirtyChunks.size) {
-      let n = 0;
+      const t0 = performance.now();
       for (const ci of w.dirtyChunks) {
         const x0 = (ci % CX) * CHUNK, y0 = Math.floor(ci / CX) * CHUNK;
         this.buildCornerField(x0, y0, x0 + CHUNK, y0 + CHUNK);
         this.buildChunk(ci);
         w.dirtyChunks.delete(ci);
-        if (++n >= 4) break;
+        if (performance.now() - t0 > 3) break;
       }
     }
     this.moundTimer -= dt;
     const entrancesChanged = this.sim.entrances.length !== this.lastEntrances;
-    if ((w.moundVersion !== this.lastMound && this.moundTimer <= 0) || entrancesChanged) {
-      this.lastMound = w.moundVersion;
+    if (entrancesChanged) {
       this.lastEntrances = this.sim.entrances.length;
-      this.moundTimer = 0.6;
-      this.updateSurface();
+      this.updateSurface(null);
+      w.moundDirty = null;
+    } else if (w.moundDirty && this.moundTimer <= 0) {
+      this.moundTimer = 0.25;
+      this.updateSurface(w.moundDirty);
+      w.moundDirty = null;
     }
     if (w.moistVersion - this.lastMoist > 30) {
       this.lastMoist = w.moistVersion;
       // only the top band of chunks changes colour
       this.buildCellColors(0, H - CHUNK * 2, W, H);
+      this.updateSurface(null);
       for (let cx = 0; cx < CX; cx++) w.dirtyChunks.add((CY - 1) * CX + cx), w.dirtyChunks.add((CY - 2) * CX + cx);
     }
   }

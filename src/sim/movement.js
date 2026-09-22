@@ -83,10 +83,13 @@ export const movement = {
     }
     let dx = ax - A.x[i], dy = ay - A.y[i];
     const len = Math.hypot(dx, dy) || 1;
-    // keep right
-    const off = A.lane[i] * 0.55;
-    const ox = ax + (dy / len) * off, oy = ay + (-dx / len) * off;
-    if (w.passable(ox | 0, oy | 0)) { ax = ox; ay = oy; }
+    // keep right (plus a personal sideways habit), squeezing in where the tunnel is narrow
+    const off = A.lane[i] * 0.55 + (((i * 0.3819) % 1) - 0.5) * 0.5;
+    for (let k = 0; k < 2; k++) {
+      const s = k ? off * 0.5 : off;
+      const ox = ax + (dy / len) * s, oy = ay + (-dx / len) * s;
+      if (w.passable(ox | 0, oy | 0) && w.passable((ox + (dy / len) * 0.25 * Math.sign(s)) | 0, (oy - (dx / len) * 0.25 * Math.sign(s)) | 0)) { ax = ox; ay = oy; break; }
+    }
     const want = Math.atan2(ay - A.y[i], ax - A.x[i]);
     this.turnToward(i, want, 9, dt);
     const sp = this.antSpeed(i);
