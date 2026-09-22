@@ -1,0 +1,12 @@
+{
+  "name": "formicarium",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Low-poly 3D ant colony simulation (Three.js, no build step)",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "sim": "node tools/headless.mjs"
+  },
+  "license": "MIT"
+}

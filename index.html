@@ -1,295 +1,100 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="Cosmic Zip">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="theme-color" content="#05070c">
-    <title>Cosmic Zip</title>
-    <link rel="preload" href="Fonts/Petitinho.ttf?v=petitinho-real-1" as="font" type="font/ttf" crossorigin>
-    <link rel="stylesheet" href="style.css?v=mobile-portrait-100">
-    <link rel="icon" type="image/png" href="favicon.png?v=cosmic-zip-2">
-    <link rel="manifest" href="manifest.webmanifest?v=mobile-portrait-100">
-    <!-- <script src="https://download.playfab.com/PlayFabClientApi.js"></script> -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Formicarium</title>
+  <meta name="description" content="A living low-poly ant farm. Watch a colony forage, dig, grow and survive on its own." />
+  <meta name="theme-color" content="#1a130e" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a130e'/%3E%3Cellipse cx='22' cy='34' rx='9' ry='7' fill='%23f2b45a'/%3E%3Ccircle cx='35' cy='33' r='5' fill='%23f2b45a'/%3E%3Ccircle cx='45' cy='31' r='5.5' fill='%23f2b45a'/%3E%3Cpath d='M30 38l-6 10M35 38l0 11M40 37l6 10M30 28l-6-9M35 28l0-10M40 29l6-9M48 27l6-8M49 28l9-3' stroke='%23f2b45a' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="style.css" />
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
+  </script>
 </head>
 <body>
-    <canvas id="loginStarCanvas" aria-hidden="true"></canvas>
-    <div id="loginScreen" class="centered-container">
-        <h1>Cosmic Zip</h1>
-        <p class="tagline">Climb a collapsing starfield. Land clean, chain jumps, and chase your best height.</p>
-        <form id="authForm" autocomplete="off">
-            <div class="login-lanes">
-                <section class="login-panel local-panel" aria-label="Local play">
-                    <div class="section-label">Local Run</div>
-                    <div class="input-group">
-                        <label for="localAliasInput">Alias / Username:</label>
-                        <input type="text" id="localAliasInput" name="local-alias" placeholder="Leaderboard name" maxlength="15" autocomplete="nickname">
-                    </div>
-                    <div class="input-group seed-group">
-                        <label for="seedInput">Seed:</label>
-                        <input type="text" id="seedInput" name="run-seed" placeholder="Map seed" maxlength="24" autocomplete="off" autocapitalize="none" spellcheck="false">
-                    </div>
-                    <div class="seed-random-row">
-                        <label>
-                            <input type="checkbox" id="randomSeedCheckbox" checked>
-                            Random seed
-                        </label>
-                    </div>
-                    <button id="localLoginButton" class="auth-button primary-action" type="button">Local Login</button>
-                    <button id="localPlayButton" class="auth-button primary-action" type="button" style="display: none;">Play Local</button>
-                </section>
+  <canvas id="scene" aria-label="Ant colony simulation"></canvas>
 
-                <section class="login-panel online-panel" aria-label="Online leaderboard login">
-                    <div class="section-label">Online Sign In</div>
-                    <div class="online-auth-block google-auth-block">
-                        <button id="googleSignInButton" class="google-signin-button" type="button" aria-label="Continue with Google">
-                            <span class="google-mark" aria-hidden="true">G</span>
-                            <span>Sign In with Google</span>
-                        </button>
-                        <button id="appleSignInButton" class="apple-signin-button" type="button" aria-label="Sign in with Apple">
-                            <span class="apple-mark" aria-hidden="true">
-                                <img src="Sprites/apple-signin-logo.png?v=apple-logo-2" alt="">
-                            </span>
-                            <span>Sign In with Apple</span>
-                        </button>
-                        <div id="googleAliasPanel" class="google-alias-panel" style="display: none;">
-                            <label for="googleAliasInput">Choose your Cosmic Zip alias</label>
-                            <div class="google-alias-row">
-                                <input type="text" id="googleAliasInput" name="google-display-name" placeholder="Leaderboard alias" maxlength="15" autocomplete="nickname">
-                                <button id="googleAliasSaveButton" type="button">Save Alias</button>
-                            </div>
-                        </div>
-                        <button id="onlinePlayButton" class="auth-button primary-action online-play-button" type="button" disabled>Play Online</button>
-                    </div>
+  <div id="hud">
+    <section class="panel stats" id="statsPanel">
+      <header>
+        <div class="brand">Formicarium</div>
+        <button class="icon-btn" id="collapseStats" title="Collapse">–</button>
+      </header>
+      <div class="clock" id="clock">Day 1 · 07:12</div>
+      <div class="stat-grid" id="statGrid">
+        <div><span>Workers</span><b id="sPop">0</b></div>
+        <div><span>Brood</span><b id="sBrood">0</b></div>
+        <div><span>Food</span><b id="sFood">0</b></div>
+        <div><span>Queen</span><b id="sQueen">–</b></div>
+      </div>
+      <div class="sub" id="sDetail"></div>
+      <canvas id="spark" width="240" height="46"></canvas>
+      <div class="legend"><i class="c-pop"></i>workers <i class="c-brood"></i>brood <i class="c-food"></i>food</div>
+    </section>
 
-                    <div class="auth-divider">Email login</div>
-                    <div class="online-auth-block email-auth-block">
-                    <div class="input-group">
-                        <label for="emailInput">Email:</label>
-                        <input type="email" id="emailInput" name="cosmic-login-email" placeholder="your@email.com" required autocomplete="off" autocapitalize="none" spellcheck="false">
-                    </div>
-                    <div class="input-group">
-                        <label for="passwordInput">Password:</label>
-                        <input type="password" id="passwordInput" name="cosmic-login-password" placeholder="6+ chars" required autocomplete="off">
-                    </div>
-                    <div class="input-group remember-me" style="display: none;">
-                         <label style="display: inline-block; margin-right: 10px;">
-                            <input type="checkbox" id="rememberPasswordCheckbox">
-                            Remember email
-                         </label>
-                    </div>
-                    <div class="input-group register-only" style="display: none;">
-                        <label for="aliasInput">Display Name:</label>
-                        <input type="text" id="aliasInput" name="display-name" placeholder="Your Alias" maxlength="15" autocomplete="nickname">
-                    </div>
+    <section class="panel toggles" id="toggles">
+      <button data-opt="pheromones" title="Show pheromone trails (P)">Pheromones</button>
+      <button data-opt="graph" title="Show tunnel network (G)">Tunnels</button>
+      <button data-opt="roles" title="Colour ants by role (R)">Roles</button>
+      <button data-opt="labels" title="Chamber labels (L)">Labels</button>
+      <button data-opt="perf" title="Performance stats (F3)">Stats</button>
+      <button id="helpBtn" title="Help (H)">?</button>
+    </section>
 
-                    <div class="button-group">
-                        <button id="authButton" type="button">Login</button>
-                        <button id="quitButton" type="button">Quit</button>
-                    </div>
-                    </div>
-                </section>
-            </div>
+    <section class="panel perf hidden" id="perf"></section>
 
-            <div id="infoText">Play local anytime, or sign in online to save global runs.</div>
+    <section class="panel journal" id="journal">
+      <header><span>Colony journal</span><button class="icon-btn" id="collapseJournal" title="Collapse">–</button></header>
+      <ol id="journalList"></ol>
+    </section>
 
-            <div class="auth-links">
-                <div class="toggle-auth">
-                    <a href="#" id="toggleAuthLink">Need to Register?</a>
-                </div>
-                <div class="toggle-auth">
-                    <a href="#" id="resetPasswordLink" style="display: none;">Forgot Password?</a>
-                </div>
-            </div>
+    <section class="panel speed" id="speed">
+      <button data-speed="0" title="Pause (Space)" class="pause">❚❚</button>
+      <button data-speed="1">1×</button>
+      <button data-speed="2">2×</button>
+      <button data-speed="4">4×</button>
+      <button data-speed="10">10×</button>
+      <button data-speed="20">20×</button>
+      <span class="limited hidden" id="limited" title="Your device can't keep up with this speed; the simulation is running as fast as it can">max</span>
+    </section>
 
-            <!-- NEW Options Button -->
-            <div class="menu-actions">
-                <button id="leaderboardButton" class="auth-button" type="button">Leaderboard</button>
-                <button id="achievementsButton" class="auth-button" type="button">Achievements</button>
-                <button id="optionsButton" class="auth-button" type="button">Options</button>
-            </div>
+    <section class="panel seedbox" id="seedbox">
+      <label for="seedInput">Seed</label>
+      <input id="seedInput" spellcheck="false" maxlength="16" />
+      <button id="restartBtn" title="Restart with this seed">Restart</button>
+      <button id="newBtn" class="accent" title="New colony with a random seed">New colony</button>
+    </section>
 
-            <!-- Version Display Placeholder -->
-            <div id="versionDisplayContainer" class="main-menu-version">
-                <span id="versionDisplay"></span>
-            </div>
+    <section class="panel inspector hidden" id="inspector"></section>
+    <div id="labels"></div>
 
-        </form>
+    <div class="overlay hidden" id="extinct">
+      <div class="card">
+        <h2>The colony has died out</h2>
+        <p id="extinctText"></p>
+        <div class="row"><button id="exRestart">Replay this seed</button><button id="exNew" class="accent">Found a new colony</button></div>
+      </div>
     </div>
 
-    <div id="leaderboardPanel" class="menu-overlay" style="display: none;">
-        <div class="menu-card leaderboard-card">
-            <h2>Leaderboard</h2>
-            <div class="leaderboard-source-toggle" role="group" aria-label="Leaderboard source">
-                <button id="localLeaderboardButton" class="source-toggle-button" type="button">Local</button>
-                <button id="globalLeaderboardButton" class="source-toggle-button" type="button">Global</button>
-            </div>
-            <div id="menuLeaderboardStatus" class="menu-status">Loading...</div>
-            <div id="menuLeaderboardList" class="menu-leaderboard-list"></div>
-            <div class="menu-actions">
-                <button id="leaderboardRefreshButton" class="menu-button game-button">Refresh</button>
-                <button id="leaderboardBackButton" class="menu-button game-button">Back</button>
-            </div>
-        </div>
+    <div class="overlay hidden" id="help">
+      <div class="card">
+        <h2>Formicarium</h2>
+        <p>A self-running ant farm. Nobody gives orders: every ant reacts to pheromones, its nestmates and what the colony lacks. Just watch.</p>
+        <ul class="keys">
+          <li><b>Drag</b> pan · <b>Scroll / pinch</b> zoom · <b>Right-drag</b> tilt</li>
+          <li><b>Click</b> an ant, the queen, a chamber, food or a creature to inspect it</li>
+          <li><b>Double-click</b> an ant to follow it · <b>Esc</b> stop following</li>
+          <li><b>Space</b> pause · <b>1–5</b> speed · <b>P</b> pheromones · <b>G</b> tunnels · <b>R</b> roles · <b>L</b> labels · <b>F3</b> stats</li>
+          <li><b>Home</b> frame the whole farm · <b>N</b> jump to the nest</li>
+        </ul>
+        <p class="muted">Pheromones: <span class="sw g"></span> food trail <span class="sw b"></span> home trail <span class="sw r"></span> alarm <span class="sw o"></span> planned digging <span class="sw y"></span> tunnel traffic</p>
+        <div class="row"><button id="helpClose" class="accent">Watch the colony</button></div>
+      </div>
     </div>
+  </div>
 
-    <div id="achievementsPanel" class="menu-overlay" style="display: none;">
-        <div class="menu-card achievements-card">
-            <button id="achievementsCloseButton" class="menu-close-button" type="button" aria-label="Close achievements">X</button>
-            <h2>Achievements</h2>
-            <div id="achievementsSummary" class="achievements-summary">0% complete</div>
-            <div id="achievementsList" class="achievements-list"></div>
-            <div class="menu-actions">
-                <button id="achievementsBackButton" class="menu-button game-button">Back</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Game Canvas (initially hidden) -->
-    <canvas id="gameCanvas" style="display: none;"></canvas>
-
-    <div id="controllerToast" class="controller-toast" aria-live="polite"></div>
-
-    <div id="mobileControls" aria-label="Touch controls">
-        <button id="mobilePauseButton" class="touch-pause-button" type="button" aria-label="Pause menu">MENU</button>
-        <div id="moveStick" class="touch-stick" aria-label="Move">
-            <div id="moveStickKnob" class="touch-stick-knob"></div>
-        </div>
-        <button id="jumpButton" class="touch-jump-button" type="button" aria-label="Jump">JUMP</button>
-    </div>
-
-    <div id="landscapeBlocker" aria-hidden="true">
-        <div class="landscape-message">
-            <strong>Rotate phone upright</strong>
-            <span>Cosmic Zip is tuned for vertical play on phones.</span>
-        </div>
-    </div>
-
-    <!-- Pause Menu (Initially Hidden) -->
-    <div id="pauseMenu" class="centered-container" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 20;">
-        <h1>PAUSED</h1>
-        <div class="button-group" style="flex-direction: column; gap: 15px;"> <!-- Adjust layout if needed -->
-            <button id="resumeButton" class="game-button pause-button">Resume</button>
-            <button id="pauseOptionsButton" class="game-button pause-button">Options</button> <!-- NEW Options Button -->
-            <button id="quitToMenuButton" class="game-button pause-button">Quit to Menu</button>
-        </div>
-    </div>
-
-    <!-- NEW Options Menu (Initially Hidden) -->
-    <div id="optionsMenu" class="menu" style="display: none;">
-        <h2>Options</h2>
-
-        <div class="options-category-grid" aria-label="Options categories">
-            <button class="menu-button game-button options-category-button" type="button" data-options-section="audio" aria-expanded="true">Audio</button>
-            <button class="menu-button game-button options-category-button" type="button" data-options-section="touch" aria-expanded="false">Touch Controls</button>
-            <button class="menu-button game-button options-category-button" type="button" data-options-section="gameplay" aria-expanded="false">Gameplay</button>
-            <button id="aboutButton" class="menu-button game-button options-category-button" type="button" data-options-section="about" aria-expanded="false">About</button>
-        </div>
-
-        <div class="options-section is-active" data-options-panel="audio">
-            <div class="options-section-title">Audio</div>
-            <div class="options-item">
-                <label for="musicVolumeSlider">Music Volume:</label>
-                <input type="range" id="musicVolumeSlider" min="0" max="100" value="60">
-                <span id="musicVolumeValue">60%</span>
-            </div>
-             <div class="options-item">
-                <label for="sfxVolumeSlider">Sound Effects Volume:</label>
-                <input type="range" id="sfxVolumeSlider" min="0" max="100" value="60">
-                <span id="sfxVolumeValue">60%</span>
-            </div>
-        </div>
-
-        <div class="options-section" data-options-panel="touch">
-            <div class="options-section-title">Touch Controls</div>
-            <div class="options-item mobile-control-option">
-                <label for="moveControlSizeSlider">Directional Control Size:</label>
-                <input type="range" id="moveControlSizeSlider" min="50" max="300" value="200">
-                <span id="moveControlSizeValue">200%</span>
-            </div>
-            <div class="options-item mobile-control-option">
-                <label for="jumpControlSizeSlider">Jump Button Size:</label>
-                <input type="range" id="jumpControlSizeSlider" min="50" max="300" value="100">
-                <span id="jumpControlSizeValue">100%</span>
-            </div>
-            <div class="options-item mobile-control-option">
-                <label for="moveControlTransparencySlider">Directional Control Transparency:</label>
-                <input type="range" id="moveControlTransparencySlider" min="0" max="100" value="73">
-                <span id="moveControlTransparencyValue">73%</span>
-            </div>
-            <div class="options-item mobile-control-option">
-                <label for="jumpControlTransparencySlider">Jump Button Transparency:</label>
-                <input type="range" id="jumpControlTransparencySlider" min="0" max="100" value="73">
-                <span id="jumpControlTransparencyValue">73%</span>
-            </div>
-        </div>
-
-        <div class="options-section" data-options-panel="gameplay">
-            <div class="options-section-title">Gameplay</div>
-            <div class="options-item toggle-option">
-                <label for="bestGhostToggle">Show Best Run Ghost:</label>
-                <input type="checkbox" id="bestGhostToggle" checked>
-                <span id="bestGhostValue">On</span>
-            </div>
-            <p class="options-help-text">Shows a transparent replay of your best run while you play.</p>
-        </div>
-
-        <div id="aboutPanel" class="options-section about-panel" data-options-panel="about">
-            <div class="options-section-title">About</div>
-            <h3>About Cosmic Zip</h3>
-            <p class="about-summary">Climb a collapsing starfield, land clean, chain jumps, and chase one more best run.</p>
-            <div class="about-meta-grid" aria-label="Game credits">
-                <div class="about-meta-card">
-                    <span class="about-meta-label">Created By</span>
-                    <span class="about-meta-value">Ryan Geidl</span>
-                </div>
-            </div>
-            <div class="about-support">
-                <div class="about-support-title">Play Support</div>
-                <div class="about-support-grid">
-                    <span>PC</span>
-                    <span>Keyboard or controller</span>
-                    <span>Mobile</span>
-                    <span>Touch or Bluetooth controller</span>
-                </div>
-            </div>
-        </div>
-
-        <button id="optionsBackButton" class="menu-button game-button options-action">Back</button>
-    </div>
-
-    <!-- Game Over Buttons (Initially Hidden) -->
-    <div id="gameOverLeaderboardPanel" class="game-over-leaderboard-panel" style="display: none;">
-        <h2>Leaderboard</h2>
-        <div class="leaderboard-source-toggle" role="group" aria-label="Game over leaderboard source">
-            <button id="gameOverLocalLeaderboardButton" class="source-toggle-button" type="button">Local</button>
-            <button id="gameOverGlobalLeaderboardButton" class="source-toggle-button" type="button">Global</button>
-        </div>
-        <div id="gameOverLeaderboardStatus" class="menu-status">Loading...</div>
-        <div id="gameOverLeaderboardList" class="menu-leaderboard-list"></div>
-        <button id="gameOverLeaderboardRefreshButton" class="menu-button game-button compact-action" type="button">Refresh</button>
-    </div>
-
-    <div id="gameOverControls" style="display: none; position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); z-index: 10; gap: 20px;">
-        <button id="retryButton" class="game-button game-over-button">Retry</button>
-        <button id="mainMenuButton" class="game-button game-over-button">Main Menu</button>
-    </div>
-
-    <div id="replayControls" style="display: none;">
-        <button id="replayBackButton" class="game-button replay-button" title="Back to leaderboard">Back</button>
-        <button id="replayRewindButton" class="game-button replay-button" title="Rewind 3 seconds">◀</button>
-        <button id="replayPlayPauseButton" class="game-button replay-button" title="Play or pause">Pause</button>
-        <button id="replayForwardButton" class="game-button replay-button" title="Forward 3 seconds">▶</button>
-        <button id="replaySpeedButton" class="game-button replay-button" title="Playback speed">1x</button>
-        <input type="range" id="replayTimeline" min="0" max="1000" value="0" aria-label="Replay timeline">
-        <span id="replayTimeLabel">00:00 / 00:00</span>
-    </div>
-
-    <!-- Load main script as a module -->
-    <script type="module" src="game.js?v=mobile-portrait-100"></script>
-    <!-- Note: The Firebase SDKs are now imported within firebaseConfig.js -->
+  <noscript>This simulation needs JavaScript and WebGL.</noscript>
+  <script type="module" src="src/main.js"></script>
 </body>
 </html>
