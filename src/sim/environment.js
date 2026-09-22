@@ -8,8 +8,6 @@ import {
 import { P_FOOD, P_HOME, P_ALARM, U_ALARM } from './pheromones.js';
 import { P_REPAIR } from './chambers.js';
 
-let sourceIds = 1, creatureIds = 1;
-
 const SOURCE_DEF = {
   [F_BERRY]: { amount: [22, 40], r: [0.9, 1.3], life: 2.2, q: 0.8, article: 'a' },
   [F_FRUIT]: { amount: [50, 90], r: [1.6, 2.4], life: 2.8, q: 0.9, article: 'a piece of' },
@@ -81,7 +79,7 @@ export const environment = {
     x = Math.max(4, Math.min(W - 4, x));
     const amount = Math.round(r.range(def.amount[0], def.amount[1]));
     const s = {
-      id: sourceIds++, kind, x, z, amount, max: amount, alive: true, found: false,
+      id: this.nextId++, kind, x, z, amount, max: amount, alive: true, found: false,
       r: r.range(def.r[0], def.r[1]), rot: r.range(0, 6.28), quality: def.q, article: def.article,
       rot0: 0, decay: amount / (def.life * DAY), attached: 0, atNest: false, moved: 0,
       born: this.time, drop: kind === F_CARCASS || at ? 0 : 1, variant: r.int(0, 3),
@@ -351,7 +349,7 @@ export const environment = {
     const r = this.rng;
     const fromLeft = r.chance(0.5);
     const c = {
-      id: creatureIds++, kind, alive: true, x: fromLeft ? 1.5 : W - 1.5, z: -r.range(3, SURF_D - 3),
+      id: this.nextId++, kind, alive: true, x: fromLeft ? 1.5 : W - 1.5, z: -r.range(3, SURF_D - 3),
       hd: fromLeft ? 0 : Math.PI, walk: 0, timer: 0, target: -1, biters: 0, fleeing: 0, leaving: false,
       lastBit: -99, eatTimer: 0, kills: 0, born: this.time, y: 0,
     };

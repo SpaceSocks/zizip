@@ -480,6 +480,8 @@ export const chambers = {
     // digging frontier: open cells touching marked soil
     const dig = [];
     let frontier = 0;
+    const exitDist = this.nav.dist[NF_EXIT];
+    const fresh = this.nav.builtTopo < 0;
     for (const p of this.plans) {
       if (p.done) continue;
       let pf = 0;
@@ -487,7 +489,13 @@ export const chambers = {
         if (w.type[c] === TUNNEL || w.mark[c] !== p.id) continue;
         const nb = [c - 1, c + 1, c - W, c + W];
         let f = false;
-        for (const n of nb) if (w.type[n] === TUNNEL) { dig.push(n); f = true; }
+        // only faces the colony can actually reach count (cells dug since the
+        // last rebuild have no distance yet but are next to reachable ones)
+        for (const n of nb) {
+          if (w.type[n] !== TUNNEL) continue;
+          if (!fresh && exitDist[n] === 65535 && ![n - 1, n + 1, n - W, n + W].some((m) => exitDist[m] !== 65535)) continue;
+          dig.push(n); f = true;
+        }
         if (f) pf++;
       }
       frontier += pf;

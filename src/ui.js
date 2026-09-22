@@ -136,10 +136,27 @@ export class UI {
     this.renderInspector();
   }
 
+  // pick someone interesting to watch: a loaded forager, a digger, a nurse...
+  followRandom() {
+    const sim = this.app.sim, A = sim.ants, r = Math.random;
+    const pool = [];
+    for (let i = 0; i < A.hi; i++) {
+      if (!A.alive[i]) continue;
+      const busy = A.carry[i] >= 0 ? 3 : A.task[i] === 1 || A.task[i] === 2 || A.task[i] === 5 ? 2 : A.task[i] === 3 ? 1 : 0;
+      if (busy) pool.push([i, busy]);
+    }
+    if (!pool.length) return;
+    const tot = pool.reduce((t, p) => t + p[1], 0);
+    let x = r() * tot, pick = pool[0][0];
+    for (const [i, w] of pool) { x -= w; if (x <= 0) { pick = i; break; } }
+    this.select({ type: 'ant', id: pick });
+    this.followSelected();
+  }
+
   followSelected() {
     const app = this.app, sim = app.sim, av = app.renderer.ants, rig = app.renderer.rig;
     const p = this.sel;
-    if (!p) return;
+    if (!p) { this.followRandom(); return; }
     if (p.type === 'ant') {
       const i = p.id;
       rig.follow = () => (sim.ants.alive[i] && sim.ants.id[i] === this.selId ? [av.posX[i], sim.ants.surf[i] ? av.posY[i] + 1 : av.posY[i], 0] : null);

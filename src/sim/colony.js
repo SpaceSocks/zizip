@@ -573,13 +573,15 @@ export const colony = {
     const A = this.ants, w = this.world;
     const x = A.x[i] | 0, y = A.y[i] | 0;
     let best = -1, bs = 1e9;
-    for (let n = 0; n < 8; n++) {
+    // orthogonal neighbours only: a cell opened at a diagonal would touch the
+    // network by a corner and be unreachable for the 4-connected flow fields
+    for (let n = 0; n < 4; n++) {
       const nx = x + DX[n], ny = y + DY[n];
       if (nx < 1 || ny < 1 || nx >= W - 1) continue;
       const c = ny * W + nx;
       if (w.mark[c] < 0 || !w.diggable(w.type[c])) continue;
       const plan = this.plans[w.mark[c]];
-      const s = (plan ? plan.order.get(c) || 0 : 0) + (n >= 4 ? 3 : 0) + this.rng.next() * 4;
+      const s = (plan ? plan.order.get(c) || 0 : 0) + this.rng.next() * 4;
       if (s < bs) { bs = s; best = c; }
     }
     return best;

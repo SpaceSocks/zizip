@@ -40,6 +40,7 @@ export class Sim {
     this.openCells = [];
     this.entrances = [];
     this.hasField = new Uint8Array(16);
+    this.nextId = 1;   // sources and creatures
     this.taskOrder = [T_FORAGE, T_NURSE, T_DIG, T_CLEAN];
     this.time = 0;
     this.tick = 0;

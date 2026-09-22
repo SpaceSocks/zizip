@@ -64,7 +64,7 @@ export class AntsView {
     this.buildItems();
 
     // selection marker
-    const ring = new THREE.RingGeometry(0.9, 1.08, 28);
+    const ring = new THREE.RingGeometry(0.94, 1.0, 40);
     this.marker = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({ color: '#ffd76a', transparent: true, opacity: 0.9, depthTest: false }));
     this.marker.renderOrder = 10;
     this.marker.visible = false;
@@ -271,12 +271,12 @@ export class AntsView {
     const sim = this.sim, i = sim.selected;
     const mk = this.marker;
     let p = null, surf = false, s = 1;
-    if (i === -2 && sim.queen.alive && this.queenPos) { p = this.queenPos; s = 2.4; }
+    if (i === -2 && sim.queen.alive && this.queenPos) { p = this.queenPos; s = 1.9; }
     else if (i >= 0 && sim.ants.alive[i]) { p = [this.posX[i], this.posY[i], this.posZ[i]]; surf = !!sim.ants.surf[i]; s = sim.ants.caste[i] === MAJOR ? 1.3 : 1; }
     if (!p) { mk.visible = false; return; }
     mk.visible = true;
     const pulse = 1 + Math.sin(time * 5) * 0.08;
-    const k = Math.max(1, 5 / Math.max(1, view.ppu)) * s * pulse;
+    const k = Math.max(1.1, 6 / Math.max(1, view.ppu)) * s * pulse;
     mk.scale.setScalar(k);
     if (surf) { mk.position.set(p[0], p[1] + 0.06, p[2]); mk.rotation.set(-Math.PI / 2, 0, 0); }
     else { mk.position.set(p[0], p[1], 0.3); mk.rotation.set(0, 0, 0); }
