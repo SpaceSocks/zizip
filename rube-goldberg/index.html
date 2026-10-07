@@ -82,6 +82,11 @@ html, body { height: 100%; margin: 0; background: var(--night); color: var(--cre
 #intro .fine { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: .04em; }
 #loading { font-family: var(--mono); font-size: 12px; color: var(--muted); }
 
+#soundHint {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(118px + env(safe-area-inset-bottom, 0px));
+  background: var(--panel); border: 1px solid var(--line); color: var(--cream); font: 600 14px/1.3 var(--display);
+  padding: 10px 16px; border-radius: 999px; white-space: nowrap; pointer-events: none;
+}
 #finale {
   position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px;
   padding-top: calc(9vh + env(safe-area-inset-top, 0px)); pointer-events: none; opacity: 0; transition: opacity .5s ease; text-align: center; padding-inline: 16px;
@@ -103,6 +108,8 @@ html, body { height: 100%; margin: 0; background: var(--night); color: var(--cre
   <div class="num" id="capNum">Stage 1</div>
   <div class="name" id="capName">The Spiral Drop</div>
 </div>
+
+<div id="soundHint" hidden>No sound? Tap anywhere to turn it on.</div>
 
 <div id="finale">
   <div class="clock">07:00 AM</div>
@@ -152,7 +159,10 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
    ===================================================================== */
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
-const G = 9.8;
+// World units are decimeters (1 unit = 10 cm): dominoes are 4.2 cm tall, the steel ball is 2.8 cm across.
+// Real gravity at that scale is 9.8 m/s^2 = 98 units/s^2.
+const G = 98;
+const MU_ROLL = 0.025 * G; // rolling resistance of a steel ball on rails (about 2.5% of g)
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
@@ -165,7 +175,7 @@ const PARAMS = new URLSearchParams(location.search);
    ===================================================================== */
 const isPhone = Math.min(innerWidth, innerHeight) < 600;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: PARAMS.has('shot') });
-renderer.setPixelRatio(Math.min(devicePixelRatio, isPhone ? 2 : 1.75));
+renderer.setPixelRatio(Math.min(devicePixelRatio, isPhone ? 1.5 : 1.75));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -394,6 +404,22 @@ class Traj {
   }
   timeWhen(pred, from = this.t0) { for (let i = Math.max(0, Math.floor((from - this.t0) / this.dt)); i < this.P.length; i++) if (pred(this.P[i], i)) return this.t0 + i * this.dt; return this.tEnd; }
 }
+// Free flight from the trajectory's current point with velocity v until it comes down to height y.
+function flyUntilY(tr, v, y) {
+  const p = tr.last, disc = v.y * v.y - 2 * G * (y - p.y);
+  const t = (v.y + Math.sqrt(Math.max(0, disc))) / G;
+  tr.fly(v, t);
+  return { t, v: V(v.x, v.y - G * t, v.z) };
+}
+// Bounce on a flat surface at height y until the bounces die out, then roll to a stop.
+function bounceOut(tr, v, y, e = 0.5, decel = 4) {
+  let vel = v.clone();
+  for (let i = 0; i < 6 && Math.abs(vel.y) > 1.2; i++) { vel = V(vel.x * 0.85, -vel.y * e, vel.z * 0.85); vel = flyUntilY(tr, vel, y).v; }
+  const p0 = tr.last.clone(), sp = Math.hypot(vel.x, vel.z);
+  if (sp < 0.05) return;
+  const T = sp / decel, dir = V(vel.x / sp, 0, vel.z / sp);
+  tr.path(T, (t) => p0.clone().addScaledVector(dir, sp * t - 0.5 * decel * t * t), true);
+}
 function bindBall(traj, mesh, rollerGain = 1) { traj.finalize(); onUpdate((T) => traj.apply(T, mesh)); ROLLERS.push({ traj, gain: rollerGain }); return traj; }
 
 // Two-rail marble track along a curve (ball center path).
@@ -542,10 +568,10 @@ const DOM_X0 = -8.45, DOM_Z0 = TOWER.z - SR;
 
   const tr = new Traj(0, curve.getPointAt(0), BR);
   tr.holdUntil(T_START);
-  tr.roll(curve, { v0: 0.6, drag: 0.2, fric: 0.1 });
+  tr.roll(curve, { v0: 0.6, drag: 0.003, fric: MU_ROLL });
   tDomHit = tr.tEnd;
   const pHit = tr.last.clone();
-  tr.path(0.7, (t) => V(pHit.x - 0.1 * (1 - Math.exp(-7 * t)), pHit.y, pHit.z), true);
+  tr.path(0.7, (t) => V(pHit.x - 0.12 * (1 - Math.exp(-12 * t)), pHit.y, pHit.z), true);
   bindBall(tr, steel);
   ACT.steel = tr;
   const tTable = tr.timeWhen((p) => p.x > TOWER.x + 1.8);
@@ -640,15 +666,21 @@ const DOM_LEDGE = {};
   function fallTable(h, target, w0) {
     const dt = 1 / 1000; let ph = 0, w = w0, t = 0; const A = [0];
     while (ph < target && t < 6) { w += 1.5 * G / h * Math.sin(ph) * dt; ph += w * dt; t += dt; A.push(Math.min(ph, target)); }
-    return { dur: t, at: (tau) => { const f = tau / dt, i = Math.floor(f); if (i >= A.length - 1) return target; return A[i] + (A[i + 1] - A[i]) * (f - i); } };
+    return { dur: t, wEnd: w, at: (tau) => { const f = tau / dt, i = Math.floor(f); if (i >= A.length - 1) return target; return A[i] + (A[i + 1] - A[i]) * (f - i); } };
   }
-  let tt = tDomHit;
+  // Each domino is kicked by the one before it: 80% of the striking domino's angular speed,
+  // scaled down for the next one's extra height. The steel ball gives the first a hard shove.
+  let tt = tDomHit, w0 = 12;
   doms.forEach((d, i) => {
     d.trig = tt;
-    const w0 = 3.4 * Math.sqrt(H0 / d.h);
     const ft = fallTable(d.h, d.phiC, w0);
     d.fall = ft.at; d.fallDur = ft.dur;
-    if (i === n - 1) { const fh = fallTable(d.h, phiHit, w0); tRedPush = tt + fh.dur; }
+    if (i === n - 1) {
+      const fh = fallTable(d.h, phiHit, w0); tRedPush = tt + fh.dur;
+      const reach = Math.hypot(redStart.x - d.pivot.x, redStart.y - TABLE_Y);
+      DOM_LEDGE.pushSpeed = clamp(1.2 * fh.wEnd * reach, 2.5, 6);
+    }
+    if (i < n - 1) w0 = Math.max(0.8, 0.8 * ft.wEnd * (d.h / doms[i + 1].h) ** 2);
     const big = d.h > 0.5;
     at(tt, () => big ? SFX.dominoBig(d.h) : SFX.domino(i));
     tt += ft.dur;
@@ -674,13 +706,15 @@ const DOM_LEDGE = {};
 /* =====================================================================
    STAGE 3/4 — The Red Ball & The Funnel
    ===================================================================== */
-const FX = 4.8, FZ = -7.75, RIM_Y = 4.55, HOLE_Y = 3.45, FR = 1.3, FH = 0.2, RIN = 1.15;
+const FX = 4.8, FZ = -7.75, RIM_Y = redStart.y - 0.32, HOLE_Y = RIM_Y - 1.1, FR = 1.3, FH = 0.2, RIN = 1.15;
 const YL = 3.1; // latch lever height
 const redBall = ball(BR, M.redGloss);
 let tCup;
-const fC = (RIM_Y - HOLE_Y) / (1 / FH - 1 / FR);
-const fY = (r) => RIM_Y - fC * (1 / r - 1 / FR);
-const fD = (r) => fC / (r * r);
+// Log-profile funnel: y = rim - A ln(R/r). A ball in a circular orbit has the same speed at every radius,
+// so friction makes it spiral inward while it spins faster and faster.
+const fA = (RIM_Y - HOLE_Y) / Math.log(FR / FH);
+const fY = (r) => RIM_Y - fA * Math.log(FR / r);
+const fD = (r) => fA / r;
 function funnelPos(rho, psi) { const d = fD(rho), n = Math.hypot(1, d); const rc = rho - (BR * d) / n; return V(FX + rc * Math.cos(psi), fY(rho) + BR / n, FZ + rc * Math.sin(psi)); }
 {
   // ledge post
@@ -712,24 +746,34 @@ function funnelPos(rho, psi) { const d = fD(rho), n = Math.hypot(1, d); const rc
   // ball trajectory: push -> rail -> funnel orbit -> drop
   const tr = new Traj(0, redStart, BR);
   tr.holdUntil(tRedPush);
-  const sim = tr.roll(curve, { v0: 1.5, drag: 0.15, fric: 0.05 });
+  const sim = tr.roll(curve, { v0: DOM_LEDGE.pushSpeed, drag: 0.003, fric: MU_ROLL });
   at(tRedPush, () => SFX.knock(0.7));
   stage(tRedPush - 0.6, 'The Red Ball');
   const tFunnel = tr.tEnd;
   stage(tFunnel, 'The Vortex Funnel');
   // orbit
-  const vin = Math.max(1.1, sim.vEnd), TF = 5.4, dt = 1 / 240;
-  const yIn = fY(RIN);
-  let psi = Math.PI / 2;
-  const orbit = [];
-  for (let t = 0; t <= TF + 1e-6; t += dt) {
-    const u = t / TF;
-    const rho = FH + 0.035 + (RIN - FH - 0.035) * (1 - Math.pow(u, 1.7));
-    const v = Math.sqrt(vin * vin + 2 * G * (5 / 7) * (yIn - fY(rho)) * 0.5);
-    psi -= (v / rho) * dt;
-    orbit.push(funnelPos(rho, psi));
+  // Equations of motion for a rolling ball on the funnel surface (gravity scaled by 5/7 for rolling),
+  // with rolling resistance acting against the velocity. Integrated until the ball reaches the hole.
+  const gE = G * 5 / 7, aF = 1.6, RMAX = 1.2, dt = 1 / 4000;
+  let r = RIN, rd = 0, om = Math.max(1, sim.vEnd) / RIN, psi = Math.PI / 2, t = 0;
+  const orbit = [funnelPos(r, psi)];
+  let nextS = tr.dt;
+  while (r > FH + 0.04 && t < 20) {
+    const f1 = fA / r, f2 = -fA / (r * r), q = 1 + f1 * f1;
+    const v = Math.sqrt(rd * rd * q + r * r * om * om) || 1e-6;
+    const rdd = (r * om * om - gE * f1 - rd * rd * f1 * f2) / q - aF * rd / v;
+    const Ldot = -aF * (r * om) / v * r; // d(r^2 omega)/dt from friction
+    rd += rdd * dt;
+    const Lm = r * r * om + Ldot * dt;
+    r += rd * dt;
+    if (r > RMAX) { r = RMAX; rd = -0.4 * Math.abs(rd); }
+    om = Lm / (r * r);
+    psi -= om * dt; t += dt;
+    if (t >= nextS) { orbit.push(funnelPos(r, psi)); nextS += tr.dt; }
   }
-  tr.path(TF, (t) => orbit[Math.min(orbit.length - 1, Math.round(t / dt))], true);
+  const TF = (orbit.length - 1) * tr.dt;
+  tr.path(TF, (tt2) => orbit[Math.min(orbit.length - 1, Math.round(tt2 / tr.dt))], true);
+  window.__funnel = { TF, vin: sim.vEnd };
   const pOut = tr.last.clone();
   const cupBall = V(FX, YL + 0.12, FZ);
   const fall = Math.sqrt((2 * (pOut.y - cupBall.y)) / G);
@@ -743,7 +787,7 @@ function funnelPos(rho, psi) { const d = fD(rho), n = Math.hypot(1, d); const rc
   rbox(0.1, 0.16, 0.08, M.rubber, 1.0, 0, 0, lever, 0.02); // finger that holds the bob
   cyl(0.05, 0.05, 0.2, M.chrome, 0, 0, 0, lever).rotation.x = Math.PI / 2;
   box(0.1, YL - 0.05, 0.1, M.woodDark, FX + 0.6, (YL - 0.05) / 2, FZ + 0.12);
-  const beta = (T) => (T < tCup ? 0 : 0.62 * smoother((T - tCup) / 0.32) + 0.04 * Math.sin((T - tCup) * 25) * Math.exp(-(T - tCup) * 8) * (T > tCup + 0.32 ? 1 : 0));
+  const beta = (T) => (T < tCup ? 0 : 0.62 * smoother((T - tCup) / 0.15) + 0.04 * Math.sin((T - tCup) * 50) * Math.exp(-(T - tCup) * 14) * (T > tCup + 0.15 ? 1 : 0));
   onUpdate((T) => { lever.rotation.z = beta(T); });
   const cupLocal = V(-0.6, 0.12, 0);
   tr.path(3.0, (t) => { const b = beta(tCup + t); const c = Math.cos(b), s = Math.sin(b); return V(lever.position.x + cupLocal.x * c - cupLocal.y * s, YL + cupLocal.x * s + cupLocal.y * c, FZ); }, false);
@@ -763,7 +807,7 @@ const CY = PY - PL; // cradle ball height
 const CZ0 = PZ + BOB_R + CR;
 let tBob, tRelease;
 {
-  tRelease = tCup + 0.17;
+  tRelease = tCup + 0.085;
   // pendulum frame
   const legs = [[-0.6, 1], [0.6, 1]];
   for (const [dx] of legs) {
@@ -820,7 +864,8 @@ let tMarbleLaunch, marbleStart;
   }
   const Th = Math.PI * Math.sqrt(CL / G);
   const amps = [0.64, 0.3, 0.14, 0.06, 0.025];
-  const gHit = 0.55;
+  const gHit = 0.62; // ball 4 meets the marble near the top of its swing
+  ACT.gHit = gHit; ACT.amp0 = amps[0];
   tMarbleLaunch = tBob + (Math.asin(gHit / amps[0]) / Math.PI) * Th;
   amps.forEach((a, k) => { if (k > 0) at(tBob + Th * k, () => SFX.clack(0.25 + a, 2700)); });
   onUpdate((T) => {
@@ -847,40 +892,44 @@ const SONG = 'E D C D E E E E D D E D C'.split(' ');
 const XZ0 = 0, XSTEP = 0.36, XY0 = 1.58, XDROP = 0.045;
 let tCupGate, cupPos0;
 {
-  const z0 = marbleStart.z + 0.42;
-  const bars = [];
   const colors = { C: 0xe4502c, D: 0xf2b134, E: 0x2a9d8f, G: 0x3b6ea5 };
   const lens = { C: 0.95, D: 0.85, E: 0.76, G: 0.66 };
-  SONG.forEach((n, k) => {
-    const y = XY0 - XDROP * k, z = z0 + XSTEP * k;
-    const m = std(colors[n], 0.35, 0.15);
-    const b = rbox(lens[n], 0.05, 0.22, m, PX, y - 0.025, z, scene, 0.015);
-    bars.push({ mesh: b, y, z, m });
-    cyl(0.018, 0.018, 0.05, M.brass, PX - lens[n] * 0.35, y - 0.06, z); cyl(0.018, 0.018, 0.05, M.brass, PX + lens[n] * 0.35, y - 0.06, z);
-  });
-  // frame
-  const zA = z0 - 0.2, zB = z0 + XSTEP * (SONG.length - 1) + 0.2;
-  for (const dx of [-0.36, 0.36]) {
-    rod(V(PX + dx, XY0 - 0.08, zA), V(PX + dx, XY0 - 0.08 - XDROP * (SONG.length - 1) - 0.02, zB), 0.03, M.woodDark);
-    rod(V(PX + dx, XY0 - 0.1, zA), V(PX + dx, 0, zA), 0.03, M.woodDark);
-    rod(V(PX + dx, XY0 - 0.1 - XDROP * (SONG.length - 1), zB), V(PX + dx, 0, zB), 0.03, M.woodDark);
-  }
-  // marble path
+  // The marble is tapped off its ledge by cradle ball 4 and bounces down the bars under real gravity
+  // (restitution 0.9). Each bar sits exactly where the marble comes down, so the spacing is physical.
+  const E_BAR = 0.9, STEP = 0.08;
+  const w4 = Math.sqrt(Math.max(0, (2 * G / CL) * (Math.cos(ACT.gHit) - Math.cos(ACT.amp0))));
+  let v = V(0, Math.sin(ACT.gHit), Math.cos(ACT.gHit)).multiplyScalar(1.25 * w4 * CL);
   const tr = new Traj(0, marbleStart, 0.1);
   tr.holdUntil(tMarbleLaunch);
-  const HOP = 0.3;
-  bars.forEach((b, k) => {
-    tr.flyTo(V(PX, b.y + 0.1, b.z), k === 0 ? 0.3 : HOP);
-    const tt = tr.tEnd;
-    at(tt, () => SFX.marimba(NOTES[SONG[k]]));
-    onUpdate((T) => { const e = T > tt ? Math.exp(-(T - tt) * 6) : 0; b.m.emissive.setHex(b.m.color.getHex()); b.m.emissiveIntensity = e * 0.9; b.mesh.position.y = b.y - 0.025 - 0.02 * e * Math.sin((T - tt) * 60); });
+  const yTop0 = marbleStart.y - 0.22;
+  const bars = [];
+  SONG.forEach((n, k) => {
+    const y = yTop0 - STEP * k;
+    const hit = flyUntilY(tr, v, y + 0.1);
+    const z = tr.last.z, tt = tr.tEnd;
+    const m = std(colors[n], 0.35, 0.15);
+    const mesh = rbox(lens[n], 0.05, 0.22, m, PX, y - 0.025, z, scene, 0.015);
+    cyl(0.018, 0.018, 0.05, M.brass, PX - lens[n] * 0.35, y - 0.06, z); cyl(0.018, 0.018, 0.05, M.brass, PX + lens[n] * 0.35, y - 0.06, z);
+    bars.push({ mesh, y, z, m });
+    at(tt, () => SFX.marimba(NOTES[n]));
+    onUpdate((T) => { const e = T > tt ? Math.exp(-(T - tt) * 6) : 0; m.emissive.setHex(m.color.getHex()); m.emissiveIntensity = e * 0.9; mesh.position.y = y - 0.025 - 0.02 * e * Math.sin((T - tt) * 60); });
+    v = V(0, -hit.v.y * E_BAR, hit.v.z * 0.97);
   });
-  // final hop into the cup
-  cupPos0 = V(PX, 0.8, zB + 0.62);
-  tr.flyTo(V(PX, cupPos0.y + 0.1, cupPos0.z), 0.42);
+  // frame under the bars
+  const bA = bars[0], bB = bars[bars.length - 1];
+  for (const dx of [-0.36, 0.36]) {
+    rod(V(PX + dx, bA.y - 0.08, bA.z - 0.2), V(PX + dx, bB.y - 0.08, bB.z + 0.2), 0.03, M.woodDark);
+    rod(V(PX + dx, bA.y - 0.1, bA.z - 0.2), V(PX + dx, 0, bA.z - 0.2), 0.03, M.woodDark);
+    rod(V(PX + dx, bB.y - 0.1, bB.z + 0.2), V(PX + dx, 0, bB.z + 0.2), 0.03, M.woodDark);
+  }
+  // last bounce lands in the cup
+  const CUP_Y = 0.35;
+  flyUntilY(tr, v, CUP_Y + 0.1);
+  cupPos0 = V(PX, CUP_Y, tr.last.z);
+  window.__xylo = { first: bA.z, last: bB.z, cup: cupPos0.z, dur: tr.tEnd - tMarbleLaunch };
   tCupGate = tr.tEnd;
   at(tCupGate, () => SFX.clank(0.4, 900));
-  const drop = (T) => (T < tCupGate ? 0 : 0.5 * smoother((T - tCupGate) / 0.55));
+  const drop = (T) => (T < tCupGate ? 0 : 0.3 * smoother((T - tCupGate) / 0.25));
   tr.path(2.5, (t) => V(PX, cupPos0.y + 0.1 - drop(tCupGate + t), cupPos0.z), false);
   bindBall(tr, marble, 0.4);
   ACT.marble = tr;
@@ -903,7 +952,7 @@ let tCupGate, cupPos0;
   onUpdate((T) => {
     const d = drop(T);
     cupG.position.set(PX, cupPos0.y - d, cupPos0.z);
-    gate.position.y = gateY0 + d * 0.9;
+    gate.position.y = gateY0 + d;
     setRod(s1, V(PX, cupPos0.y - d + 0.12, cupPos0.z), V(PX, py + 0.16, cupPos0.z), 0.008);
     setRod(s2, V(PX, py + 0.16, cupPos0.z), V(gx, py + 0.16, zc), 0.008);
     setRod(s3, V(gx, py + 0.16, zc), V(gx, gate.position.y + 0.15, zc), 0.008);
@@ -967,8 +1016,8 @@ const carG = new THREE.Group(); scene.add(carG);
   rod(V(LOOP_X - 0.05, TRACK_Y + 2 * LOOP_R + 0.04, CAR_Z + LOOP_DZ / 2), V(LOOP_X - 0.7, 0, CAR_Z + LOOP_DZ / 2 - 0.9), 0.025, M.navy);
 
   // motion
-  const tGo = tCupGate + 0.32;
-  const sim = rollSim(curve, { k: 1, drag: 0.02, fric: 0.35, v0: 0.15, vmin: 0.15 });
+  const tGo = ACT.tGo = tCupGate + 0.16;
+  const sim = rollSim(curve, { k: 1, drag: 0.005, fric: 0.035 * G, v0: 0.15, vmin: 0.15 });
   tSwitch = tGo + sim.dur;
   const sOf = (T) => { if (T < tGo) return 0; if (T < tSwitch) return sim.sAt(T - tGo); const k = T - tSwitch; return L - 0.12 * (1 - Math.exp(-k * 10)) * (1 + 0.3 * Math.exp(-k * 4) * Math.sin(k * 20)); };
   ACT.car = (T) => { const f = frameAt(clamp(sOf(T) / L, 0, 1)); return f.p.clone().addScaledVector(f.up, 0.12); };
@@ -982,7 +1031,7 @@ const carG = new THREE.Group(); scene.add(carG);
   });
   ROLLERS.push({ traj: { rollSpeed: (T) => (T > tGo && T < tSwitch ? (sOf(T + 0.01) - sOf(T)) / 0.01 : 0) }, gain: 0.8, car: true });
   at(tGo - 0.05, () => SFX.creak());
-  at(tGo + 0.25, () => SFX.whoosh(1.8, 200, 900, 0.25));
+  at(tGo + 0.1, () => SFX.whoosh(0.9, 200, 1100, 0.25));
   at(tSwitch, () => { SFX.knock(1.0); SFX.zap(); });
   stage(tCupGate - 0.1, 'The Loop-the-Loop');
   window.__carCurve = curve;
@@ -1129,6 +1178,11 @@ let motorAngle;
 /* =====================================================================
    STAGE 10/11 — The Long Way Round & Plinko
    ===================================================================== */
+// Catapult: a lever with a short arm (A, where the gold ball lands) and a long arm (B, the projectile).
+// It swings from e0 to e1 and stops; the 1:2.9 lever ratio multiplies the impact speed.
+const CAT = { x: -6.7, y: 0.62, z: 3.0, armA: 0.35, armB: 1.0, e0: 0.6, e1: 0.25 };
+const CAT_A_X = CAT.x + CAT.armA * Math.cos(CAT.e0);
+const BELL = { x: 0, hang: 0, z: 3.0 };
 const PLK = { x: -4.3, z: 3.0, top: 4.5, rows: 10, dy: 0.28, dx: 0.3 };
 let tPlinkoOut, plinkoOut;
 const pegs = [];
@@ -1155,7 +1209,7 @@ const pegs = [];
   cyl(0.08, 0.08, hy0 + 0.5, M.brass, HC.x, (hy0 + 0.5) / 2, HC.z);
   cyl(0.45, 0.55, 0.12, M.navy, HC.x, 0.06, HC.z);
   ball(0.12, M.red).position.set(HC.x, hy0 + 0.55, HC.z);
-  const sim = tr.roll(curve, { v0: 0.7, drag: 0.08, fric: 0.04, vmin: 0.5 });
+  const sim = tr.roll(curve, { v0: 0.7, drag: 0.003, fric: MU_ROLL, vmin: 0.5 });
   at(tElevTop, () => SFX.clank(0.4, 1100));
   stage(tElevTop - 0.2, 'The Helix');
   // plinko board
@@ -1177,8 +1231,7 @@ const pegs = [];
   stage(tr.tEnd - 0.4, 'Plinko');
   // bounce path
   const r = rng(9);
-  let x = PLK.x;
-  const t0 = tr.tEnd;
+  let x = PLK.x, vyUp = 0; // pegs absorb most of the bounce: 30% of the impact speed comes back
   for (let j = 0; j < PLK.rows; j++) {
     const ox = j % 2 ? -PLK.dx * 3.5 : -PLK.dx * 3;
     const n = j % 2 ? 8 : 7;
@@ -1186,8 +1239,10 @@ const pegs = [];
     let dir = r() < 0.5 ? -1 : 1;
     if (best < PLK.x - 0.7) dir = 1; if (best > PLK.x + 0.7) dir = -1;
     const contact = V(best + dir * 0.04, PLK.top - j * PLK.dy + 0.17, PLK.z);
-    const dur = j === 0 ? Math.sqrt((2 * Math.max(0.05, tr.last.y - contact.y)) / G) + 0.05 : 0.23 + r() * 0.05;
-    tr.flyTo(contact, dur);
+    const p0 = tr.last.clone(), dy = p0.y - contact.y;
+    const dur = (vyUp + Math.sqrt(vyUp * vyUp + 2 * G * dy)) / G;
+    tr.fly(V((contact.x - p0.x) / dur, vyUp, (contact.z - p0.z) / dur), dur); tr.last.copy(contact);
+    vyUp = 0.3 * (G * dur - vyUp);
     const tt = tr.tEnd, peg = pegs.find((p) => p.j === j && Math.abs(p.x - best) < 1e-3);
     if (peg) peg.hit = tt;
     at(tt, () => SFX.ping(900 + j * 70 + r() * 80));
@@ -1195,11 +1250,11 @@ const pegs = [];
   }
   // drop out the bottom into a chute
   const chuteTop = V(x, PLK.top - PLK.rows * PLK.dy - 0.12, PLK.z);
-  tr.flyTo(chuteTop, 0.3);
+  { const p0 = tr.last.clone(), dur = (vyUp + Math.sqrt(vyUp * vyUp + 2 * G * (p0.y - chuteTop.y))) / G; tr.fly(V((chuteTop.x - p0.x) / dur, vyUp, 0), dur); tr.last.copy(chuteTop); }
   at(tr.tEnd, () => SFX.thud(220, 0.3));
-  const chute = curveOf([chuteTop, V(PLK.x - 1.0, chuteTop.y - 0.12, PLK.z), V(-5.45, chuteTop.y - 0.25, PLK.z)]);
+  const chute = curveOf([chuteTop, V(PLK.x - 1.0, chuteTop.y - 0.12, PLK.z), V(CAT_A_X + 0.22, chuteTop.y - 0.3, PLK.z)]);
   rails(chute, { posts: 0.6, br: 0.15 });
-  tr.roll(chute, { v0: 0.6, drag: 0.05, fric: 0.05, vmin: 0.6 });
+  tr.roll(chute, { v0: 1.5, drag: 0.003, fric: MU_ROLL, vmin: 0.6 });
   tPlinkoOut = tr.tEnd; plinkoOut = { traj: tr };
   onUpdate((T) => { for (const p of pegs) { const e = p.hit > 0 && T > p.hit ? Math.exp(-(T - p.hit) * 4) : 0; p.mesh.material.emissiveIntensity = e * 2.2; } });
 }
@@ -1207,55 +1262,66 @@ const pegs = [];
 /* =====================================================================
    STAGE 12 — Catapult & Bell
    ===================================================================== */
-const CAT = { x: -6.7, y: 0.3, z: 3.0, arm: 1.0, e0: 0.3 };
-const BELL = { x: -10.2, hang: 4.55, z: 3.0 };
+
 const BUTTON = { x: 0, z: 3.0 };
 let tLaunch, tBell, tButton;
 const tennis = ball(0.12, M.tennis);
 {
   const tr = plinkoOut.traj;
-  const aEnd = V(CAT.x + CAT.arm * Math.cos(CAT.e0), CAT.y + CAT.arm * Math.sin(CAT.e0) + 0.05 + 0.15, CAT.z);
-  const v = tr.flyTo(aEnd, Math.sqrt((2 * Math.max(0.02, tr.last.y - aEnd.y)) / G) * 1.0 + 0.04);
+  const aPos = (e) => V(CAT.x + CAT.armA * Math.cos(e), CAT.y + CAT.armA * Math.sin(e) + 0.2, CAT.z);
+  const bPos = (e) => V(CAT.x - CAT.armB * Math.cos(e), CAT.y - CAT.armB * Math.sin(e) + 0.17, CAT.z);
+  // gold ball drops from the chute into cup A
+  const hA = aPos(CAT.e0);
+  const tf = Math.sqrt((2 * Math.max(0.02, tr.last.y - hA.y)) / G);
+  tr.flyTo(hA, tf);
   const tLand = tr.tEnd;
-  const SLAM = 0.12;
-  const eps = (T) => (T < tLand ? CAT.e0 : CAT.e0 - 2 * CAT.e0 * smoother((T - tLand) / SLAM) + (T > tLand + SLAM ? 0.03 * Math.sin((T - tLand - SLAM) * 30) * Math.exp(-(T - tLand - SLAM) * 6) : 0));
-  tr.path(3.0, (t) => { const e = eps(tLand + t); return V(CAT.x + CAT.arm * Math.cos(e), CAT.y + CAT.arm * Math.sin(e) + 0.05 + 0.15, CAT.z); }, false);
+  const vImp = G * tf;
+  const wArm = (0.9 * vImp) / CAT.armA;      // arm spin right after the impact
+  const SLAM = (CAT.e0 - CAT.e1) / wArm;     // time until the arm hits its stop
+  const eps = (T) => (T < tLand ? CAT.e0 : T < tLand + SLAM ? CAT.e0 - wArm * (T - tLand) : CAT.e1 + 0.025 * Math.sin((T - tLand - SLAM) * 45) * Math.exp(-(T - tLand - SLAM) * 9));
+  tr.path(3.0, (t) => aPos(eps(tLand + t)), false);
   bindBall(tr, goldBall, 1.0);
   at(tLand, () => { SFX.thud(110, 0.8); SFX.boing(); });
   stage(tPlinkoOut - 0.6, 'The Catapult');
   // catapult model
   const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.0, 0.3, CAT.y, 3), M.navy); stand.position.set(CAT.x, CAT.y / 2, CAT.z); stand.rotation.y = Math.PI / 2; scene.add(stand);
-  box(2.4, 0.06, 0.5, M.woodDark, CAT.x, 0.03, CAT.z);
+  box(1.8, 0.06, 0.5, M.woodDark, CAT.x - 0.2, 0.03, CAT.z);
+  const stopA = aPos(CAT.e1); box(0.1, stopA.y - 0.2 - 0.03, 0.1, M.red, stopA.x + 0.12, (stopA.y - 0.23) / 2, CAT.z - 0.18);
   const armG = new THREE.Group(); armG.position.set(CAT.x, CAT.y, CAT.z); scene.add(armG);
-  rbox(2.2, 0.05, 0.22, M.wood, 0, 0.025, 0, armG, 0.02);
-  const cupA = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.12, 0.08, 20, 1, true), M.brass); cupA.position.set(CAT.arm, 0.09, 0); armG.add(cupA);
-  const cupB = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.1, 0.08, 20, 1, true), M.red); cupB.position.set(-CAT.arm, 0.09, 0); armG.add(cupB);
+  rbox(CAT.armA + CAT.armB + 0.2, 0.05, 0.22, M.wood, (CAT.armA - CAT.armB) / 2, 0.025, 0, armG, 0.02);
+  const cupA = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.12, 0.08, 20, 1, true), M.brass); cupA.position.set(CAT.armA, 0.09, 0); armG.add(cupA);
+  const cupB = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.1, 0.08, 20, 1, true), M.red); cupB.position.set(-CAT.armB, 0.09, 0); armG.add(cupB);
   cyl(0.04, 0.04, 0.3, M.chrome, 0, 0, 0, armG).rotation.x = Math.PI / 2;
   onUpdate((T) => { armG.rotation.z = eps(T); });
-  // tennis ball flight
-  tLaunch = tLand + SLAM * 0.85;
-  const bPos = (e) => V(CAT.x - CAT.arm * Math.cos(e), CAT.y - CAT.arm * Math.sin(e) + 0.05 + 0.12, CAT.z);
+  // projectile leaves cup B with the arm tip's velocity when the arm hits its stop
+  tLaunch = tLand + SLAM;
   const tt = new Traj(0, bPos(CAT.e0), 0.12);
   tt.holdUntil(tLand);
-  tt.path(tLaunch - tLand, (t) => bPos(eps(tLand + t)), false);
-  const bellHit = V(BELL.x + 0.53, BELL.hang - 0.93, BELL.z);
-  const FLIGHT = 1.3;
-  tt.flyTo(bellHit, FLIGHT);
+  tt.path(SLAM, (t) => bPos(eps(tLand + t)), false);
+  const vB = CAT.armB * wArm;
+  const v0 = V(-Math.sin(CAT.e1), Math.cos(CAT.e1), 0).multiplyScalar(vB);
+  // the bell hangs where the ball's arc passes, a little after the top of its flight
+  const tHit = 1.35 * (v0.y / G);
+  tt.fly(v0, tHit);
+  const bellHit = tt.last.clone();
+  BELL.x = bellHit.x - 0.53; BELL.hang = bellHit.y + 0.93;
   tBell = tt.tEnd;
-  BUTTON.x = bellHit.x + 0.45;
+  window.__cat = { vImp, wArm, SLAM, vB, bellHit: bellHit.toArray() };
+  // glancing bounce off the bell, then down onto the button
+  const vAfter = V(-(v0.x) * 0.45, (v0.y - G * tHit) * 0.85, 0);
   const btnTop = 0.9;
-  const tDown = Math.sqrt((2 * (bellHit.y - (btnTop + 0.12))) / G) * 1.0;
-  tt.flyTo(V(BUTTON.x, btnTop + 0.12, BELL.z), tDown);
+  const down = flyUntilY(tt, vAfter, btnTop + 0.12);
+  BUTTON.x = tt.last.x;
   tButton = tt.tEnd;
-  tt.flyTo(V(BUTTON.x + 0.25, btnTop + 0.06, BELL.z + 0.05), 0.32);
-  tt.flyTo(V(BUTTON.x + 0.55, 0.12, BELL.z + 0.1), 0.42);
-  tt.path(0.8, (t) => V(BUTTON.x + 0.55 + 0.5 * (1 - Math.exp(-t * 3)), 0.12, BELL.z + 0.1 + 0.25 * (1 - Math.exp(-t * 3))), true);
+  // bounce off the button, then off the floor
+  const off = flyUntilY(tt, V(down.v.x + 1.2, -down.v.y * 0.45, 0.6), 0.12);
+  bounceOut(tt, off.v, 0.12, 0.45, 5);
   bindBall(tt, tennis, 0.6);
   ACT.tennis = tt; ACT.gold = tr; ACT.tLand = tLand;
-  at(tLaunch, () => SFX.whoosh(1.2, 500, 2000, 0.3));
+  at(tLaunch, () => SFX.whoosh(0.5, 600, 2400, 0.3));
   at(tBell, () => SFX.bell());
   at(tButton, () => SFX.knock(0.9));
-  stage(tLaunch + 0.6, 'The Bell');
+  stage(tLaunch + 0.02, 'The Bell');
   // bell + gallows
   rod(V(BELL.x - 0.85, 0, BELL.z - 0.3), V(BELL.x - 0.85, BELL.hang + 0.45, BELL.z - 0.3), 0.07, M.woodDark);
   rod(V(BELL.x - 0.95, BELL.hang + 0.4, BELL.z - 0.3), V(BELL.x + 0.2, BELL.hang + 0.4, BELL.z - 0.3), 0.06, M.woodDark);
@@ -1267,7 +1333,8 @@ const tennis = ball(0.12, M.tennis);
   const bp = []; for (let i = 0; i <= 20; i++) { const u = i / 20; bp.push(new THREE.Vector2(0.1 + 0.42 * Math.pow(u, 1.8) + (u > 0.9 ? (u - 0.9) * 1.2 : 0), -u * 1.2)); }
   const bellMesh = new THREE.Mesh(new THREE.LatheGeometry(bp, 48), std(0xd8a03a, 0.22, 1, { side: THREE.DoubleSide })); bellMesh.position.y = -0.35; bellG.add(bellMesh);
   ball(0.09, M.iron, bellG).position.y = -1.4;
-  onUpdate((T) => { const k = T - tBell; bellG.rotation.z = k > 0 ? -0.32 * Math.sin(k * 5.2) * Math.exp(-k * 0.9) : 0; });
+  const wBell = Math.sqrt(G / 1.0); // the bell swings like a 10 cm pendulum
+  onUpdate((T) => { const k = T - tBell; bellG.rotation.z = k > 0 ? -0.25 * Math.sin(k * wBell) * Math.exp(-k * 1.2) : 0; });
 }
 
 /* =====================================================================
@@ -1368,7 +1435,7 @@ const finaleLights = {};
   const cannons = [V(bx - 2.5, 2.8, bz + 1.6), V(bx + 0.55, 2.3, bz - 0.55)];
   for (let i = 0; i < NC; i++) {
     const c = cannons[i % 2];
-    const a = r() * Math.PI * 2, el = 0.9 + r() * 0.6, sp = 5 + r() * 6;
+    const a = r() * Math.PI * 2, el = 0.9 + r() * 0.6, sp = 22 + r() * 22;
     CP.push({ p: c, v: V(Math.cos(a) * Math.cos(el) * sp, Math.sin(el) * sp, Math.sin(a) * Math.cos(el) * sp), spin: V(r() * 9, r() * 9, r() * 9), ph: r() * 6, delay: r() * 0.35 });
     conf.setColorAt(i, pal[i % pal.length]);
   }
@@ -1379,7 +1446,7 @@ const finaleLights = {};
     const k0 = T - tConf;
     conf.visible = k0 > 0;
     if (!conf.visible) return;
-    const kd = 1.6, vt = 0.9;
+    const kd = 3.5, vt = 1.6;
     for (let i = 0; i < NC; i++) {
       const c = CP[i], k = Math.max(0, k0 - c.delay);
       const e = (1 - Math.exp(-kd * k)) / kd;
@@ -1391,7 +1458,7 @@ const finaleLights = {};
     }
     conf.instanceMatrix.needsUpdate = true;
   });
-  stage(tButton - 0.25, 'Alarm!');
+  stage(tButton - 0.02, 'Alarm!');
   T_END = tRing + 10.5;
   // sunrise
   onUpdate((T) => {
@@ -1416,7 +1483,7 @@ for (let t = 1; t < tButton; t += 1) at(t, ((hi) => () => SFX.tick(hi, 0.07))(Ma
    ===================================================================== */
 // The camera always looks straight at the "action point": whatever is moving right now.
 // Each stage only chooses where the camera sits relative to that point.
-const tGo = tCupGate + 0.32;
+const tGo = ACT.tGo;
 const { tPickWanted } = window.__gold;
 const CLOCK = V(BUTTON.x - 2.5, 1.5, BUTTON.z + 1.6);
 const GEAR_C = V(-0.45, 1.0, GZ);
@@ -1442,7 +1509,7 @@ const ACTION = [
   [ACT.tLand + 0.08, (T) => ACT.tennis.pos(T)],
   [tButton + 0.2, () => CLOCK.clone()],
 ];
-const ACTION_FADE = 0.45;
+const ACTION_FADE = 0.3;
 function rawAction(T) {
   let i = 0; while (i < ACTION.length - 1 && ACTION[i + 1][0] <= T) i++;
   const p = ACTION[i][1](T);
@@ -1451,7 +1518,7 @@ function rawAction(T) {
 }
 // centered moving average: removes jitter (fast spins, bounces) without lagging behind
 function actionAt(T) {
-  const win = T > tRedPush + 1.2 && T < tCup ? 0.32 : 0.14;
+  const win = T > tRedPush + 0.6 && T < tCup ? 0.3 : 0.1;
   const out = V();
   for (let k = -3; k <= 3; k++) out.add(rawAction(T + (k / 3) * win));
   return out.multiplyScalar(1 / 7);
@@ -1463,8 +1530,8 @@ const OFFSETS = [
   [tDomHit - 0.8, () => V(-0.9, 1.7, 3.0), 1.2],
   [doms[doms.length - 8].trig - 0.2, () => V(-1.4, 1.8, 4.6), 1.2],
   [tRedPush - 0.1, () => V(-1.0, 1.1, 3.4), 0.8],
-  [tRedPush + 1.3, () => V(0.6, 2.4, 3.0), 1.2],
-  [tCup - 0.3, () => V(4.4, 1.2, 2.2), 0.9],
+  [tRedPush + 0.5, () => V(0.6, 2.4, 3.0), 1.0],
+  [tCup - 1.0, () => V(4.6, 1.9, 1.4), 0.8],
   [tMarbleLaunch - 0.1, () => V(2.5, 0.9, 0.9), 0.9],
   [tGo - 0.2, () => V(0.5, 0.9, 3.2), 0.8],
   [tSwitch + 0.2, () => V(1.4, 0.9, 4.0), 0.9],
@@ -1472,7 +1539,7 @@ const OFFSETS = [
   [tElevTop - 0.1, () => V(0.9, 0.9, 3.6), 1.0],
   [tPlinkoOut - 3.6, () => V(0.25, 0.25, 3.8), 1.0],
   [tPlinkoOut - 0.4, () => V(-0.3, 1.1, 5.2), 0.8],
-  [tLaunch + 0.1, () => V(0.4, 0.8, 6.8), 0.9],
+  [tLaunch, () => V(0.4, 0.8, 6.8), 0.4],
   [tButton + 0.1, (T) => { const a = 0.85 + (T - tButton) * 0.1; return V(Math.cos(a) * 5.4, 1.2, Math.sin(a) * 5.4); }, 0.9],
   [finaleLights.tRing + 3.4, (T) => { const k = T - finaleLights.tRing - 3.4; const a = 1.0 + k * 0.05, R = 6 + k * 2.2; return V(Math.cos(a) * R, 1.2 + k * 1.1, Math.sin(a) * R); }, 1.5],
 ];
@@ -1501,14 +1568,37 @@ function cameraAt(T) {
    ===================================================================== */
 const SFX = (() => {
   let ctx = null, master, bus, rev, noise, roll, rollF, rollG, motorG, motorO, motorF;
-  let muted = false;
+  let muted = false, mediaEl = null;
+  // A short silent WAV. Playing it from a tap moves iOS into "playback" audio mode,
+  // so Web Audio is not silenced by the ring/silent switch.
+  function silentWav() {
+    const sr = 8000, n = 1600, buf = new ArrayBuffer(44 + n * 2), dv = new DataView(buf);
+    const w = (o, str) => { for (let i = 0; i < str.length; i++) dv.setUint8(o + i, str.charCodeAt(i)); };
+    w(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); w(36, 'data'); dv.setUint32(40, n * 2, true);
+    let bin = ''; const u8 = new Uint8Array(buf); for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+    return 'data:audio/wav;base64,' + btoa(bin);
+  }
+  function unlock() {
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* not supported */ }
+    try {
+      if (!mediaEl) { mediaEl = document.createElement('audio'); mediaEl.src = silentWav(); mediaEl.loop = true; mediaEl.setAttribute('playsinline', ''); mediaEl.preload = 'auto'; }
+      const pr = mediaEl.play(); if (pr && pr.catch) pr.catch(() => {});
+    } catch (e) { /* ignore */ }
+    if (ctx) {
+      if (ctx.state !== 'running') ctx.resume().catch(() => {});
+      try { const b = ctx.createBuffer(1, 1, 22050), src = ctx.createBufferSource(); src.buffer = b; src.connect(ctx.destination); src.start(0); } catch (e) { /* ignore */ }
+    }
+  }
   function init() {
     if (ctx) return;
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* not supported */ }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     ctx = new AC();
     master = ctx.createGain(); master.gain.value = 0.9;
-    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 5; comp.attack.value = 0.003; comp.release.value = 0.2;
-    master.connect(comp).connect(ctx.destination);
+    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -20; comp.knee.value = 6; comp.ratio.value = 10; comp.attack.value = 0.002; comp.release.value = 0.15;
+    const out = ctx.createGain(); out.gain.value = 1.7; // makeup gain: phone speakers are quiet
+    master.connect(comp).connect(out).connect(ctx.destination);
     bus = ctx.createGain(); bus.connect(master);
     // reverb
     const len = ctx.sampleRate * 2.4, ir = ctx.createBuffer(2, len, ctx.sampleRate);
@@ -1547,10 +1637,10 @@ const SFX = (() => {
     o.start(t); o.stop(t + attack + dur + 0.05);
   }
   return {
-    init, get ctx() { return ctx; },
+    init, unlock, get ctx() { return ctx; }, get running() { return !!ctx && ctx.state === 'running'; },
     setMuted(m) { muted = m; if (master) master.gain.setTargetAtTime(m ? 0 : 0.9, ctx.currentTime, 0.05); },
     get muted() { return muted; },
-    resume() { if (ctx && ctx.state !== 'running') ctx.resume(); },
+    resume() { unlock(); },
     suspendVoices() { if (!ctx) return; rollG.gain.setTargetAtTime(0, now(), 0.03); motorG.gain.setTargetAtTime(0, now(), 0.05); },
     continuous(rollSpeed, motorOn, motorRate) {
       if (!ctx) return; const t = now();
@@ -1638,7 +1728,8 @@ async function keepAwake(on) {
 }
 function setPlaying(p) { playing = p; keepAwake(p); $('iPlay').innerHTML = p ? pauseIcon : playIcon; $('bPlay').setAttribute('aria-label', p ? 'Pause' : 'Play'); if (!p) SFX.suspendVoices(); }
 function start() {
-  SFX.init(); SFX.resume();
+  SFX.init(); SFX.unlock();
+  setTimeout(() => { if (!SFX.running && !SFX.muted) $('soundHint').hidden = false; }, 700);
   started = true;
   $('intro').classList.add('gone'); $('hud').classList.remove('hidden'); $('caption').hidden = false;
   seek(0); setPlaying(true);
@@ -1663,6 +1754,8 @@ $('bCam').addEventListener('click', () => {
   bar.addEventListener('pointerup', end); bar.addEventListener('pointercancel', end);
   bar.addEventListener('keydown', (e) => { if (e.key === 'ArrowRight') seek(T + 2); if (e.key === 'ArrowLeft') seek(T - 2); if (e.key === ' ') { e.preventDefault(); setPlaying(!playing); } });
 }
+// any tap retries the audio unlock until sound is running
+addEventListener('pointerdown', () => { if (!started) return; if (!SFX.running) SFX.unlock(); setTimeout(() => { if (SFX.running) $('soundHint').hidden = true; }, 300); }, true);
 addEventListener('keydown', (e) => { if (e.target === document.body && e.key === ' ' && started) { e.preventDefault(); setPlaying(!playing); } });
 document.addEventListener('visibilitychange', () => { if (document.hidden && playing) setPlaying(false); });
 
@@ -1706,13 +1799,13 @@ function renderAt(Tv, now) {
 }
 function frame(nowMs) {
   const now = nowMs / 1000;
-  const dt = Math.min(0.05, (nowMs - lastNow) / 1000); lastNow = nowMs;
+  const dt = Math.min(0.25, (nowMs - lastNow) / 1000); lastNow = nowMs; // real elapsed time, even if frames drop
   if (playing) {
     const t0 = T; T = Math.min(T_END, T + dt * speed);
     fireEvents(t0, T);
     let rs = 0; for (const r of ROLLERS) rs = Math.max(rs, r.traj.rollSpeed(T) * r.gain);
     const motorOn = T > tMotor && T < T_END;
-    SFX.continuous(rs, motorOn, motorOn ? 6 : 0);
+    SFX.continuous(rs / 3, motorOn, motorOn ? 6 : 0);
     if (T >= T_END) setPlaying(false);
   }
   renderAt(T, now);
